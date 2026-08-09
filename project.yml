@@ -1,6 +1,7 @@
 name: CatDriveHUD
 options:
   bundleIdPrefix: com.hohifamily
+  xcodeVersion: "15.0"
   deploymentTarget:
     iOS: "15.0"
   createIntermediateGroups: true
