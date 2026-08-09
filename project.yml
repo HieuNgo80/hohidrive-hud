@@ -1,0 +1,43 @@
+name: CatDriveHUD
+options:
+  bundleIdPrefix: com.hohifamily
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  GoogleMaps:
+    url: https://github.com/googlemaps/ios-maps-sdk
+    from: 8.4.0
+targets:
+  CatDriveHUD:
+    type: application
+    platform: iOS
+    sources:
+      - CatDriveHUD
+    info:
+      path: CatDriveHUD/Info.plist
+      properties:
+        CFBundleDisplayName: Hohi Drive HUD
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSLocationWhenInUseUsageDescription: "Cần vị trí để dẫn đường và hiển thị tốc độ lên HUD"
+        NSBluetoothAlwaysUsageDescription: "Cần Bluetooth để kết nối với màn hình HUD ESP32"
+        NSBluetoothPeripheralUsageDescription: "Cần Bluetooth để kết nối với màn hình HUD ESP32"
+        UIBackgroundModes:
+          - location
+          - bluetooth-central
+        GoogleMapsAPIKey: "AIzaSyBbanPhqZhyNRcZmEetmNLZaGgoaDheUkU"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hohifamily.hohidrivehud
+        PRODUCT_NAME: CatDriveHUD
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        SWIFT_VERSION: "5.0"
+    dependencies:
+      - package: GoogleMaps
