@@ -3,12 +3,12 @@ options:
   bundleIdPrefix: com.hohifamily
   xcodeVersion: "15.0"
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
   createIntermediateGroups: true
 packages:
   GoogleMaps:
     url: https://github.com/googlemaps/ios-maps-sdk
-    from: 8.4.0
+    from: 11.0.0
 targets:
   CatDriveHUD:
     type: application
@@ -38,7 +38,7 @@ targets:
         CODE_SIGNING_ALLOWED: "NO"
         CODE_SIGNING_REQUIRED: "NO"
         TARGETED_DEVICE_FAMILY: "1"
-        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
         SWIFT_VERSION: "5.0"
     dependencies:
       - package: GoogleMaps
