@@ -133,11 +133,11 @@ class ViewController: UIViewController {
         destinationField.resignFirstResponder()
         guard let address = destinationField.text, !address.isEmpty else { return }
 
-        // Geocode địa chỉ -> tọa độ
-        let geocoder = GMSGeocoder()
-        geocoder.geocodeAddressString(address) { [weak self] results, error in
+        // Geocode địa chỉ -> tọa độ (dùng CLGeocoder của Apple — SDK Google Maps 11 đã bỏ GMSGeocoder)
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
             guard let self = self,
-                  let coordinate = results?.firstResult()?.coordinate,
+                  let coordinate = placemarks?.first?.location?.coordinate,
                   error == nil else {
                 self?.statusLabel.text = "Không tìm thấy địa chỉ"
                 return
