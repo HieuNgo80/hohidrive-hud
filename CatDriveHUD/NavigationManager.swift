@@ -33,25 +33,30 @@ class NavigationManager {
                 return
             }
 
-            // Từng bước rẽ (MKRouteStep)
+            // Tổng: thời gian + khoảng cách
+            let totalDurationSec = Int(route.expectedTravelTime)
+            let totalDistanceText = Self.formatDistance(route.distance)
+            let totalDistance = route.steps.reduce(0.0) { $0 + $1.distance }
+
+            // Từng bước rẽ (MKRouteStep) — MapKit không cho thời gian từng step,
+            // nên chia tổng thời gian theo tỷ lệ quãng đường của từng bước
             var steps: [RouteStep] = []
             for s in route.steps {
                 // Điểm cuối của bước này = điểm cuối polyline của step
                 let pts = s.polyline.points()
                 let end = pts[s.polyline.pointCount - 1].coordinate
+                let stepDuration = totalDistance > 0
+                    ? Int(Double(s.distance) / totalDistance * Double(totalDurationSec))
+                    : 0
                 steps.append(RouteStep(
                     instruction: s.instructions,
                     maneuver: Self.mapManeuver(s.instructions),
                     endLat: end.latitude,
                     endLng: end.longitude,
                     distance: Int(s.distance),
-                    durationValue: Int(s.expectedTravelTime)
+                    durationValue: stepDuration
                 ))
             }
-
-            // Tổng: thời gian + khoảng cách
-            let totalDurationSec = Int(route.expectedTravelTime)
-            let totalDistanceText = Self.formatDistance(route.distance)
 
             // Tọa độ polyline tổng (để vẽ tuyến đường)
             var coords: [CLLocationCoordinate2D] = []
