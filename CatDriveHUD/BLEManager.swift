@@ -12,7 +12,7 @@ class BLEManager: NSObject {
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
-    private var reconnectTimer: Timer?
+    private var isScanning = false
 
     override init() {
         super.init()
@@ -20,16 +20,26 @@ class BLEManager: NSObject {
     }
 
     func startScan() {
-        guard central.state == .poweredOn else { return }
-        central.scanForPeripherals(withServices: nil, options: nil)
+        guard central.state == .poweredOn, !isScanning else { return }
+        isScanning = true
+        // Scan theo đúng service UUID của HUD — nhanh + không bắt nhầm thiết bị khác
+        central.scanForPeripherals(withServices: [BLEManager.serviceUUID], options: nil)
     }
 
-    /// Gửi JSON tới HUD
+    private func stopScan() {
+        if isScanning {
+            central.stopScan()
+            isScanning = false
+        }
+    }
+
+    /// Gửi JSON tới HUD — dùng withoutResponse để không chờ ACK,
+    /// tránh bị iOS timeout ngắt kết nối khi ESP đang bận vẽ OLED
     func send(json: [String: Any]) {
         guard let ch = writeCharacteristic,
               let data = try? JSONSerialization.data(withJSONObject: json),
               let peripheral = peripheral else { return }
-        peripheral.writeValue(data, for: ch, type: .withResponse)
+        peripheral.writeValue(data, for: ch, type: .withoutResponse)
     }
 }
 
@@ -44,13 +54,10 @@ extension BLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        let name = peripheral.name ?? ""
-        if name.contains("ESP32_Sygic_HUD") || name.contains("CatDrive") {
-            self.peripheral = peripheral
-            central.stopScan()
-            central.connect(peripheral, options: nil)
-            onStatusChange?("Đang kết nối \(name)...")
-        }
+        stopScan()
+        self.peripheral = peripheral
+        central.connect(peripheral, options: nil)
+        onStatusChange?("Đang kết nối HUD...")
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -58,12 +65,22 @@ extension BLEManager: CBCentralManagerDelegate {
         peripheral.discoverServices([BLEManager.serviceUUID])
     }
 
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        onStatusChange?("Kết nối thất bại — thử lại...")
+        // Thử lại sau 1 giây
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.startScan()
+        }
+    }
+
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         onConnectedChange?(false)
         onStatusChange?("Mất kết nối — đang thử lại...")
-        // Auto-reconnect (phản hồi "hay mất tín hiệu" của V5)
         writeCharacteristic = nil
-        startScan()
+        // Chờ 1 giây rồi quét lại cho ESP kịp quảng cáo
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.startScan()
+        }
     }
 }
 
