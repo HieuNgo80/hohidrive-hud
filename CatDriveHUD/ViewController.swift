@@ -27,6 +27,7 @@ class ViewController: UIViewController {
     private var isNavigating = false
     private var totalDistanceText = ""
     private var routePolyline: MKPolyline?
+    private var pendingDestination: CLLocationCoordinate2D?
 
     // MARK: - Lifecycle
 
@@ -69,8 +70,12 @@ class ViewController: UIViewController {
         ])
 
         destinationField.translatesAutoresizingMaskIntoConstraints = false
-        destinationField.placeholder = "Nhập điểm đến..."
         destinationField.backgroundColor = .white
+        destinationField.textColor = .black
+        destinationField.attributedPlaceholder = NSAttributedString(
+            string: "Nhập điểm đến...",
+            attributes: [.foregroundColor: UIColor.darkGray]
+        )
         destinationField.layer.cornerRadius = 8
         destinationField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
         destinationField.leftViewMode = .always
@@ -169,7 +174,7 @@ class ViewController: UIViewController {
 
         // Nếu đã chọn từ gợi ý thì dùng luôn
         if let coord = selectedCoordinate {
-            startNavigation(to: coord)
+            beginNavigation(to: coord)
             return
         }
 
@@ -184,16 +189,23 @@ class ViewController: UIViewController {
                 self?.statusLabel.text = "Không tìm thấy địa chỉ"
                 return
             }
-            self.startNavigation(to: coordinate)
+            self.beginNavigation(to: coordinate)
         }
     }
 
-    private func startNavigation(to destination: CLLocationCoordinate2D) {
+    /// Bắt đầu dẫn đường — nếu chưa có GPS thì lưu lại và chờ fix vị trí đầu tiên
+    private func beginNavigation(to destination: CLLocationCoordinate2D) {
         guard let origin = locationManager.location?.coordinate else {
-            statusLabel.text = "Chưa có vị trí GPS"
+            pendingDestination = destination
+            statusLabel.text = "Đang chờ vị trí GPS..."
             return
         }
+        startNavigation(from: origin, to: destination)
+    }
 
+    private func startNavigation(from origin: CLLocationCoordinate2D,
+                                 to destination: CLLocationCoordinate2D) {
+        pendingDestination = nil
         statusLabel.text = "Đang lấy tuyến đường..."
         nav.fetchRoute(from: origin, to: destination) { [weak self] steps, _, totalDistanceText, coords in
             guard let self = self, !steps.isEmpty else {
@@ -304,9 +316,24 @@ extension ViewController: UITableViewDataSource, UITableViewDelegate {
 
 extension ViewController: CLLocationManagerDelegate {
 
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        if status == .denied || status == .restricted {
+            statusLabel.text = "Bật quyền vị trí trong Settings để dẫn đường"
+        } else if status == .authorizedAlways || status == .authorizedWhenInUse {
+            locationManager.startUpdatingLocation()
+        }
+    }
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         let coord = location.coordinate
+
+        // Có điểm đến đang chờ GPS — fix được vị trí là tự bắt đầu dẫn đường
+        if let pending = pendingDestination {
+            startNavigation(from: coord, to: pending)
+            return
+        }
 
         if !isNavigating {
             // Bản đồ đang follow vị trí — chỉ cần giữ tâm bám theo
