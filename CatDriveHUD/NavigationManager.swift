@@ -1,10 +1,10 @@
 import Foundation
 import CoreLocation
-import GoogleMaps
+import MapKit
 
-/// Một bước rẽ trong tuyến đường (từ Directions API)
+/// Một bước rẽ trong tuyến đường (từ Apple MapKit / MKDirections)
 struct RouteStep {
-    let instruction: String   // tên đường / chỉ dẫn (đã bỏ thẻ HTML)
+    let instruction: String   // chỉ dẫn: "Rẽ trái vào Lê Lợi"
     let maneuver: String      // left | right | straight | arrive
     let endLat: Double
     let endLng: Double
@@ -12,86 +12,75 @@ struct RouteStep {
     let durationValue: Int    // giây đi hết bước này
 }
 
-/// Lấy tuyến đường từ Google Directions API + parse
+/// Lấy tuyến đường bằng Apple MapKit (MKDirections) — miễn phí, không cần API key
 class NavigationManager {
 
-    /// Gọi Directions API, trả về steps + thông tin tổng
+    /// Tính tuyến đường, trả về steps + thông tin tổng + tọa độ polyline để vẽ
     func fetchRoute(from: CLLocationCoordinate2D,
                     to: CLLocationCoordinate2D,
-                    apiKey: String,
-                    completion: @escaping ([RouteStep], Int, String, String) -> Void) {
+                    completion: @escaping ([RouteStep], Int, String, [CLLocationCoordinate2D]) -> Void) {
 
-        let urlStr = "https://maps.googleapis.com/maps/api/directions/json"
-            + "?origin=\(from.latitude),\(from.longitude)"
-            + "&destination=\(to.latitude),\(to.longitude)"
-            + "&mode=driving&language=vi&key=\(apiKey)"
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        request.transportType = .automobile
+        request.requestsAlternateRoutes = false
 
-        guard let url = URL(string: urlStr) else { return }
-
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard let data = data, error == nil,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let routes = json["routes"] as? [[String: Any]],
-                  let route = routes.first,
-                  let legs = route["legs"] as? [[String: Any]],
-                  let leg = legs.first else { return }
-
-            // Khoảng cách + thời gian tổng
-            var totalDistanceText = ""
-            var totalDurationSec = 0
-            if let dist = leg["distance"] as? [String: Any] {
-                totalDistanceText = dist["text"] as? String ?? ""
-            }
-            if let dur = leg["duration"] as? [String: Any] {
-                totalDurationSec = dur["value"] as? Int ?? 0
+        let directions = MKDirections(request: request)
+        directions.calculate { response, error in
+            guard let route = response?.routes.first else {
+                DispatchQueue.main.async { completion([], 0, "", []) }
+                return
             }
 
-            // Polyline tổng (để vẽ tuyến đường trên bản đồ)
-            var overviewPoints = ""
-            if let overview = route["overview_polyline"] as? [String: Any],
-               let points = overview["points"] as? String {
-                overviewPoints = points
-            }
-
-            // Từng bước rẽ
+            // Từng bước rẽ (MKRouteStep)
             var steps: [RouteStep] = []
-            if let stepArr = leg["steps"] as? [[String: Any]] {
-                for s in stepArr {
-                    let end = s["end_location"] as? [String: Any] ?? [:]
-                    let dist = s["distance"] as? [String: Any] ?? [:]
-                    let dur = s["duration"] as? [String: Any] ?? [:]
-                    let html = s["html_instructions"] as? String ?? ""
-                    let maneuver = s["maneuver"] as? String ?? ""
-                    steps.append(RouteStep(
-                        instruction: Self.stripHTML(html),
-                        maneuver: Self.mapManeuver(maneuver),
-                        endLat: end["lat"] as? Double ?? 0,
-                        endLng: end["lng"] as? Double ?? 0,
-                        distance: dist["value"] as? Int ?? 0,
-                        durationValue: dur["value"] as? Int ?? 0
-                    ))
-                }
+            for s in route.steps {
+                // Điểm cuối của bước này = điểm cuối polyline của step
+                let pts = s.polyline.points()
+                let end = pts[s.polyline.pointCount - 1].coordinate
+                steps.append(RouteStep(
+                    instruction: s.instructions,
+                    maneuver: Self.mapManeuver(s.instructions),
+                    endLat: end.latitude,
+                    endLng: end.longitude,
+                    distance: Int(s.distance),
+                    durationValue: Int(s.expectedTravelTime)
+                ))
+            }
+
+            // Tổng: thời gian + khoảng cách
+            let totalDurationSec = Int(route.expectedTravelTime)
+            let totalDistanceText = Self.formatDistance(route.distance)
+
+            // Tọa độ polyline tổng (để vẽ tuyến đường)
+            var coords: [CLLocationCoordinate2D] = []
+            let routePts = route.polyline.points()
+            for i in 0..<route.polyline.pointCount {
+                coords.append(routePts[i].coordinate)
             }
 
             DispatchQueue.main.async {
-                completion(steps, totalDurationSec, totalDistanceText, overviewPoints)
+                completion(steps, totalDurationSec, totalDistanceText, coords)
             }
-        }.resume()
+        }
     }
 
-    /// Bỏ thẻ HTML trong chỉ dẫn: "<b>Rẽ trái</b> vào <b>Lê Lợi</b>" -> "Rẽ trái vào Lê Lợi"
-    static func stripHTML(_ html: String) -> String {
-        let cleaned = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-        return cleaned
-            .replacingOccurrences(of: " +", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Định dạng khoảng cách mét -> "25.4 km" / "800 m"
+    static func formatDistance(_ meters: CLLocationDistance) -> String {
+        if meters >= 1000 {
+            return String(format: "%.1f km", meters / 1000)
+        }
+        return "\(Int(meters)) m"
     }
 
-    /// Chuẩn hóa maneuver của Google thành mã HUD: left / right / straight / arrive
-    static func mapManeuver(_ raw: String) -> String {
-        if raw.contains("left") { return "left" }
-        if raw.contains("right") { return "right" }
-        if raw == "arrive" || raw == "destination" { return "arrive" }
+    /// Đoán maneuver từ chữ chỉ dẫn của Apple (tiếng Việt/Anh)
+    static func mapManeuver(_ instruction: String) -> String {
+        let lower = instruction.lowercased()
+        if lower.contains("trái") || lower.contains("left") { return "left" }
+        if lower.contains("phải") || lower.contains("right") { return "right" }
+        if lower.contains("đến nơi") || lower.contains("điểm đến")
+            || lower.contains("arrive") || lower.contains("destination") { return "arrive" }
         return "straight"
     }
 }

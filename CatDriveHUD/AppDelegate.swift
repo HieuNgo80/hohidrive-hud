@@ -1,5 +1,4 @@
 import UIKit
-import GoogleMaps
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,11 +6,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Khởi tạo Google Maps SDK với API key (đọc từ Info.plist)
-        if let key = Bundle.main.object(forInfoDictionaryKey: "GoogleMapsAPIKey") as? String, !key.isEmpty {
-            GMSServices.provideAPIKey(key)
-        }
-
+        // Bản V8: dùng Apple MapKit — không cần API key, không cần Google Cloud
         window = UIWindow(frame: UIScreen.main.bounds)
         window?.rootViewController = ViewController()
         window?.makeKeyAndVisible()

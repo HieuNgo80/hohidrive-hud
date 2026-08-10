@@ -1,30 +1,32 @@
 import UIKit
-import GoogleMaps
+import MapKit
 import CoreLocation
 
 class ViewController: UIViewController {
 
     // UI
-    private let mapView = GMSMapView()
+    private let mapView = MKMapView()
     private let destinationField = UITextField()
     private let goButton = UIButton(type: .system)
     private let statusLabel = UILabel()
+    private let suggestionTable = UITableView()
 
     // Services
     private let locationManager = CLLocationManager()
     private let ble = BLEManager()
     private let nav = NavigationManager()
+    private let completer = MKLocalSearchCompleter()
+
+    // Tìm kiếm gợi ý
+    private var suggestions: [MKLocalSearchCompletion] = []
+    private var selectedCoordinate: CLLocationCoordinate2D?
 
     // Trạng thái dẫn đường
     private var steps: [RouteStep] = []
     private var currentStepIndex = 0
     private var isNavigating = false
     private var totalDistanceText = ""
-    private var routePolyline: GMSPolyline?
-
-    private var apiKey: String {
-        Bundle.main.object(forInfoDictionaryKey: "GoogleMapsAPIKey") as? String ?? ""
-    }
+    private var routePolyline: MKPolyline?
 
     // MARK: - Lifecycle
 
@@ -33,6 +35,7 @@ class ViewController: UIViewController {
         setupUI()
         setupLocation()
         setupBLE()
+        setupCompleter()
     }
 
     // MARK: - UI
@@ -40,10 +43,11 @@ class ViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = .black
 
-        // Bản đồ
+        // Bản đồ Apple (miễn phí, không cần key)
         mapView.translatesAutoresizingMaskIntoConstraints = false
-        mapView.isMyLocationEnabled = true
-        mapView.settings.myLocationButton = true
+        mapView.showsUserLocation = true
+        mapView.userTrackingMode = .follow
+        mapView.delegate = self
         view.addSubview(mapView)
         NSLayoutConstraint.activate([
             mapView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -72,6 +76,7 @@ class ViewController: UIViewController {
         destinationField.leftViewMode = .always
         destinationField.returnKeyType = .go
         destinationField.delegate = self
+        destinationField.addTarget(self, action: #selector(textChanged), for: .editingChanged)
         bar.addSubview(destinationField)
 
         goButton.translatesAutoresizingMaskIntoConstraints = false
@@ -92,6 +97,19 @@ class ViewController: UIViewController {
             goButton.topAnchor.constraint(equalTo: bar.topAnchor, constant: 8),
             goButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -8),
             goButton.widthAnchor.constraint(equalToConstant: 64)
+        ])
+
+        // Bảng gợi ý địa chỉ (ẩn mặc định)
+        suggestionTable.translatesAutoresizingMaskIntoConstraints = false
+        suggestionTable.isHidden = true
+        suggestionTable.dataSource = self
+        suggestionTable.delegate = self
+        view.addSubview(suggestionTable)
+        NSLayoutConstraint.activate([
+            suggestionTable.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            suggestionTable.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            suggestionTable.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            suggestionTable.heightAnchor.constraint(equalToConstant: 280)
         ])
 
         // Trạng thái
@@ -127,13 +145,37 @@ class ViewController: UIViewController {
         ble.startScan()
     }
 
+    private func setupCompleter() {
+        completer.delegate = self
+        completer.resultTypes = [.address, .pointOfInterest]
+        completer.pointOfInterestFilter = .includingAll
+    }
+
     // MARK: - Actions
+
+    @objc private func textChanged() {
+        guard let text = destinationField.text, !text.isEmpty else {
+            suggestionTable.isHidden = true
+            suggestions = []
+            selectedCoordinate = nil
+            return
+        }
+        completer.queryFragment = text
+    }
 
     @objc private func goTapped() {
         destinationField.resignFirstResponder()
+        suggestionTable.isHidden = true
+
+        // Nếu đã chọn từ gợi ý thì dùng luôn
+        if let coord = selectedCoordinate {
+            startNavigation(to: coord)
+            return
+        }
+
         guard let address = destinationField.text, !address.isEmpty else { return }
 
-        // Geocode địa chỉ -> tọa độ (dùng CLGeocoder của Apple — SDK Google Maps 11 đã bỏ GMSGeocoder)
+        // Geocode địa chỉ -> tọa độ
         let geocoder = CLGeocoder()
         geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
             guard let self = self,
@@ -153,7 +195,7 @@ class ViewController: UIViewController {
         }
 
         statusLabel.text = "Đang lấy tuyến đường..."
-        nav.fetchRoute(from: origin, to: destination, apiKey: apiKey) { [weak self] steps, _, totalDistanceText, overviewPoints in
+        nav.fetchRoute(from: origin, to: destination) { [weak self] steps, _, totalDistanceText, coords in
             guard let self = self, !steps.isEmpty else {
                 self?.statusLabel.text = "Không có tuyến đường"
                 return
@@ -162,22 +204,24 @@ class ViewController: UIViewController {
             self.currentStepIndex = 0
             self.totalDistanceText = totalDistanceText
             self.isNavigating = true
-            self.drawRoute(overviewPoints: overviewPoints)
+            self.drawRoute(coordinates: coords)
             self.statusLabel.text = "Đang dẫn đường... (\(totalDistanceText))"
         }
     }
 
-    private func drawRoute(overviewPoints: String) {
-        routePolyline?.map = nil
-        guard let path = GMSPath(fromEncodedPath: overviewPoints) else { return }
-        let polyline = GMSPolyline(path: path)
-        polyline.strokeColor = .systemBlue
-        polyline.strokeWidth = 5
-        polyline.map = mapView
+    private func drawRoute(coordinates: [CLLocationCoordinate2D]) {
+        if let poly = routePolyline {
+            mapView.removeOverlay(poly)
+        }
+        guard coordinates.count > 1 else { return }
+        let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+        mapView.addOverlay(polyline)
         routePolyline = polyline
 
-        let bounds = GMSCoordinateBounds(path: path)
-        mapView.animate(with: GMSCameraUpdate.fit(bounds, withPadding: 40))
+        let rect = polyline.boundingMapRect
+        mapView.setVisibleMapRect(rect,
+                                   edgePadding: UIEdgeInsets(top: 100, left: 50, bottom: 100, right: 50),
+                                   animated: true)
     }
 
     // MARK: - Helpers
@@ -196,6 +240,66 @@ class ViewController: UIViewController {
     }
 }
 
+// MARK: - MKMapViewDelegate
+
+extension ViewController: MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        if let polyline = overlay as? MKPolyline {
+            let renderer = MKPolylineRenderer(polyline: polyline)
+            renderer.strokeColor = .systemBlue
+            renderer.lineWidth = 5
+            return renderer
+        }
+        return MKOverlayRenderer(overlay: overlay)
+    }
+}
+
+// MARK: - MKLocalSearchCompleterDelegate
+
+extension ViewController: MKLocalSearchCompleterDelegate {
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        suggestions = completer.results
+        suggestionTable.isHidden = suggestions.isEmpty
+        suggestionTable.reloadData()
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        suggestionTable.isHidden = true
+    }
+}
+
+// MARK: - UITableViewDataSource / Delegate
+
+extension ViewController: UITableViewDataSource, UITableViewDelegate {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        suggestions.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "cell")
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "cell")
+        let s = suggestions[indexPath.row]
+        cell.textLabel?.text = s.title
+        cell.detailTextLabel?.text = s.subtitle
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let completion = suggestions[indexPath.row]
+        let request = MKLocalSearch.Request(completion: completion)
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, error in
+            guard let self = self, let item = response?.mapItems.first else { return }
+            self.destinationField.text = completion.title
+            self.selectedCoordinate = item.placemark.coordinate
+            self.suggestionTable.isHidden = true
+            self.destinationField.resignFirstResponder()
+            self.startNavigation(to: item.placemark.coordinate)
+        }
+    }
+}
+
 // MARK: - CLLocationManagerDelegate
 
 extension ViewController: CLLocationManagerDelegate {
@@ -205,7 +309,8 @@ extension ViewController: CLLocationManagerDelegate {
         let coord = location.coordinate
 
         if !isNavigating {
-            mapView.animate(toLocation: coord)
+            // Bản đồ đang follow vị trí — chỉ cần giữ tâm bám theo
+            mapView.setCenter(coord, animated: true)
             return
         }
 
