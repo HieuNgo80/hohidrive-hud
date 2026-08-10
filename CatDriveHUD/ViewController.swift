@@ -307,7 +307,7 @@ extension ViewController: UITableViewDataSource, UITableViewDelegate {
             self.selectedCoordinate = item.placemark.coordinate
             self.suggestionTable.isHidden = true
             self.destinationField.resignFirstResponder()
-            self.startNavigation(to: item.placemark.coordinate)
+            self.beginNavigation(to: item.placemark.coordinate)
         }
     }
 }
