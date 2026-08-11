@@ -5,11 +5,21 @@ import CoreImage
 
 class ViewController: UIViewController {
 
-    // UI
+    // MARK: - UI
+
+    // Bản đồ
     private let mapView = MKMapView()
-    private let destinationField = UITextField()
-    private let goButton = UIButton(type: .system)
+
+    // Thanh trên
+    private let topBar = UIView()
+    private let titleLabel = UILabel()
     private let qrButton = UIButton(type: .system)
+
+    // Card nhập điểm đến
+    private let destCard = UIView()
+    private let destStack = UIStackView()
+    private let addDestButton = UIButton(type: .system)
+    private let goButton = UIButton(type: .system)
     private let statusLabel = UILabel()
     private let suggestionTable = UITableView()
 
@@ -20,21 +30,31 @@ class ViewController: UIViewController {
     private let roadLabel = UILabel()
     private let etaLabel = UILabel()
     private let progressView = UIProgressView()
+    private let stopButton = UIButton(type: .system)
 
     // Overlay đến nơi + QR
     private let arriveOverlay = UIView()
     private let arriveTitle = UILabel()
+    private let arriveSubtitle = UILabel()
     private let qrImageView = UIImageView()
 
-    // Services
+    // MARK: - Services
+
     private let locationManager = CLLocationManager()
     private let ble = BLEManager()
     private let nav = NavigationManager()
     private let completer = MKLocalSearchCompleter()
 
+    // MARK: - Điểm đến (nhiều điểm)
+
+    private var destinationFields: [UITextField] = []
+    private var destinationCoords: [CLLocationCoordinate2D?] = []
+    /// Đánh dấu từng điểm đã hoàn thành (hiện QR) hay chưa
+    private var stopCompleted: [Bool] = []
+    private var activeFieldIndex = 0
+
     // Tìm kiếm gợi ý
     private var suggestions: [MKLocalSearchCompletion] = []
-    private var selectedCoordinate: CLLocationCoordinate2D?
 
     // Trạng thái dẫn đường
     private var steps: [RouteStep] = []
@@ -44,6 +64,11 @@ class ViewController: UIViewController {
     private var routePolyline: MKPolyline?
     private var pendingDestination: CLLocationCoordinate2D?
     private var lastSendTime: TimeInterval = 0
+
+    /// Chỉ số điểm đến đang được dẫn đường (trong destinationFields)
+    private var currentStopIndex = 0
+    /// Tổng số điểm đến có nội dung (để hiển thị X/Y)
+    private var totalStopsWithText = 0
 
     /// Chuỗi mã QR thanh toán (VietQR) — nhập ở nút QR, lưu vĩnh viễn
     private var qrString: String {
@@ -59,6 +84,7 @@ class ViewController: UIViewController {
         setupLocation()
         setupBLE()
         setupCompleter()
+        addDestinationRow()
     }
 
     // MARK: - UI
@@ -66,7 +92,7 @@ class ViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = .black
 
-        // Bản đồ Apple (miễn phí, không cần key)
+        // ---- Bản đồ Apple (miễn phí, không cần key) ----
         mapView.translatesAutoresizingMaskIntoConstraints = false
         mapView.showsUserLocation = true
         mapView.userTrackingMode = .follow
@@ -80,81 +106,112 @@ class ViewController: UIViewController {
             mapView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
-        // Thanh nhập điểm đến
-        let bar = UIView()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.backgroundColor = UIColor.black.withAlphaComponent(0.85)
-        view.addSubview(bar)
+        // ---- Thanh trên ----
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        topBar.backgroundColor = UIColor(white: 0.08, alpha: 0.96)
+        view.addSubview(topBar)
         NSLayoutConstraint.activate([
-            bar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bar.heightAnchor.constraint(equalToConstant: 56)
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topBar.heightAnchor.constraint(equalToConstant: 52)
         ])
 
-        // Nút QR (góc trái)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = "📍 Hohi Drive"
+        titleLabel.font = .boldSystemFont(ofSize: 18)
+        titleLabel.textColor = .white
+        topBar.addSubview(titleLabel)
+
         qrButton.translatesAutoresizingMaskIntoConstraints = false
         qrButton.setTitle("◧ QR", for: .normal)
         qrButton.setTitleColor(.white, for: .normal)
         qrButton.titleLabel?.font = .boldSystemFont(ofSize: 13)
         qrButton.backgroundColor = UIColor.systemIndigo.withAlphaComponent(0.9)
-        qrButton.layer.cornerRadius = 8
+        qrButton.layer.cornerRadius = 10
         qrButton.addTarget(self, action: #selector(qrTapped), for: .touchUpInside)
-        bar.addSubview(qrButton)
-
-        destinationField.translatesAutoresizingMaskIntoConstraints = false
-        destinationField.backgroundColor = .white
-        destinationField.textColor = .black
-        destinationField.attributedPlaceholder = NSAttributedString(
-            string: "Nhập điểm đến...",
-            attributes: [.foregroundColor: UIColor.darkGray]
-        )
-        destinationField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
-        destinationField.leftViewMode = .always
-        destinationField.layer.cornerRadius = 10
-        destinationField.returnKeyType = .go
-        destinationField.delegate = self
-        destinationField.addTarget(self, action: #selector(textChanged), for: .editingChanged)
-        bar.addSubview(destinationField)
-
-        goButton.translatesAutoresizingMaskIntoConstraints = false
-        goButton.setTitle("Đi ▶", for: .normal)
-        goButton.setTitleColor(.white, for: .normal)
-        goButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        goButton.backgroundColor = .systemBlue
-        goButton.layer.cornerRadius = 10
-        goButton.addTarget(self, action: #selector(goTapped), for: .touchUpInside)
-        bar.addSubview(goButton)
+        topBar.addSubview(qrButton)
 
         NSLayoutConstraint.activate([
-            qrButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 8),
-            qrButton.topAnchor.constraint(equalTo: bar.topAnchor, constant: 10),
-            qrButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -10),
+            titleLabel.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 16),
+            titleLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+
+            qrButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -12),
+            qrButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             qrButton.widthAnchor.constraint(equalToConstant: 56),
+            qrButton.heightAnchor.constraint(equalToConstant: 34)
+        ])
 
-            destinationField.leadingAnchor.constraint(equalTo: qrButton.trailingAnchor, constant: 6),
-            destinationField.topAnchor.constraint(equalTo: bar.topAnchor, constant: 8),
-            destinationField.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -8),
+        // ---- Card nhập điểm đến ----
+        destCard.translatesAutoresizingMaskIntoConstraints = false
+        destCard.backgroundColor = UIColor(white: 0.12, alpha: 0.96)
+        destCard.layer.cornerRadius = 18
+        destCard.layer.borderWidth = 1
+        destCard.layer.borderColor = UIColor.white.withAlphaComponent(0.15).cgColor
+        view.addSubview(destCard)
+        NSLayoutConstraint.activate([
+            destCard.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 8),
+            destCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            destCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+        ])
 
-            goButton.leadingAnchor.constraint(equalTo: destinationField.trailingAnchor, constant: 6),
-            goButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -8),
-            goButton.topAnchor.constraint(equalTo: bar.topAnchor, constant: 8),
-            goButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -8),
-            goButton.widthAnchor.constraint(equalToConstant: 64)
+        // Stack các ô điểm đến
+        destStack.translatesAutoresizingMaskIntoConstraints = false
+        destStack.axis = .vertical
+        destStack.spacing = 8
+        destCard.addSubview(destStack)
+        NSLayoutConstraint.activate([
+            destStack.topAnchor.constraint(equalTo: destCard.topAnchor, constant: 14),
+            destStack.leadingAnchor.constraint(equalTo: destCard.leadingAnchor, constant: 12),
+            destStack.trailingAnchor.constraint(equalTo: destCard.trailingAnchor, constant: -12)
+        ])
+
+        // Nút + thêm điểm đến
+        addDestButton.translatesAutoresizingMaskIntoConstraints = false
+        addDestButton.setTitle("＋ Thêm điểm đến", for: .normal)
+        addDestButton.setTitleColor(.systemBlue, for: .normal)
+        addDestButton.titleLabel?.font = .boldSystemFont(ofSize: 15)
+        addDestButton.contentHorizontalAlignment = .leading
+        addDestButton.addTarget(self, action: #selector(addDestTapped), for: .touchUpInside)
+        destCard.addSubview(addDestButton)
+        NSLayoutConstraint.activate([
+            addDestButton.topAnchor.constraint(equalTo: destStack.bottomAnchor, constant: 10),
+            addDestButton.leadingAnchor.constraint(equalTo: destCard.leadingAnchor, constant: 16),
+            addDestButton.trailingAnchor.constraint(equalTo: destCard.trailingAnchor, constant: -12),
+            addDestButton.heightAnchor.constraint(equalToConstant: 34)
+        ])
+
+        // Nút bắt đầu
+        goButton.translatesAutoresizingMaskIntoConstraints = false
+        goButton.setTitle("▶ BẮT ĐẦU", for: .normal)
+        goButton.setTitleColor(.white, for: .normal)
+        goButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        goButton.backgroundColor = .systemBlue
+        goButton.layer.cornerRadius = 14
+        goButton.addTarget(self, action: #selector(goTapped), for: .touchUpInside)
+        destCard.addSubview(goButton)
+        NSLayoutConstraint.activate([
+            goButton.topAnchor.constraint(equalTo: addDestButton.bottomAnchor, constant: 10),
+            goButton.leadingAnchor.constraint(equalTo: destCard.leadingAnchor, constant: 16),
+            goButton.trailingAnchor.constraint(equalTo: destCard.trailingAnchor, constant: -16),
+            goButton.heightAnchor.constraint(equalToConstant: 46),
+            goButton.bottomAnchor.constraint(equalTo: destCard.bottomAnchor, constant: -14)
         ])
 
         // Bảng gợi ý địa chỉ (ẩn mặc định)
         suggestionTable.translatesAutoresizingMaskIntoConstraints = false
         suggestionTable.isHidden = true
-        suggestionTable.backgroundColor = UIColor.black.withAlphaComponent(0.92)
+        suggestionTable.backgroundColor = UIColor(white: 0.1, alpha: 0.98)
         suggestionTable.separatorColor = .darkGray
+        suggestionTable.layer.cornerRadius = 14
+        suggestionTable.clipsToBounds = true
         suggestionTable.dataSource = self
         suggestionTable.delegate = self
         view.addSubview(suggestionTable)
         NSLayoutConstraint.activate([
-            suggestionTable.topAnchor.constraint(equalTo: bar.bottomAnchor),
-            suggestionTable.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            suggestionTable.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            suggestionTable.topAnchor.constraint(equalTo: destCard.bottomAnchor, constant: 6),
+            suggestionTable.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            suggestionTable.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             suggestionTable.heightAnchor.constraint(equalToConstant: 280)
         ])
 
@@ -163,13 +220,13 @@ class ViewController: UIViewController {
         statusLabel.textColor = .white
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.text = "Đang tìm HUD..."
-        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
         statusLabel.layer.cornerRadius = 6
         statusLabel.clipsToBounds = true
         view.addSubview(statusLabel)
         NSLayoutConstraint.activate([
-            statusLabel.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 6),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8)
+            statusLabel.topAnchor.constraint(equalTo: destCard.bottomAnchor, constant: 6),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
         ])
 
         // ---- HUD card dưới đáy ----
@@ -184,7 +241,7 @@ class ViewController: UIViewController {
             hudCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             hudCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             hudCard.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
-            hudCard.heightAnchor.constraint(equalToConstant: 148)
+            hudCard.heightAnchor.constraint(equalToConstant: 150)
         ])
 
         arrowLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -219,6 +276,15 @@ class ViewController: UIViewController {
         progressView.trackTintColor = .darkGray
         hudCard.addSubview(progressView)
 
+        stopButton.translatesAutoresizingMaskIntoConstraints = false
+        stopButton.setTitle("■ Dừng", for: .normal)
+        stopButton.setTitleColor(.systemRed, for: .normal)
+        stopButton.titleLabel?.font = .boldSystemFont(ofSize: 13)
+        stopButton.backgroundColor = UIColor.white.withAlphaComponent(0.12)
+        stopButton.layer.cornerRadius = 8
+        stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
+        hudCard.addSubview(stopButton)
+
         NSLayoutConstraint.activate([
             arrowLabel.leadingAnchor.constraint(equalTo: hudCard.leadingAnchor, constant: 12),
             arrowLabel.topAnchor.constraint(equalTo: hudCard.topAnchor, constant: 8),
@@ -239,7 +305,12 @@ class ViewController: UIViewController {
 
             progressView.leadingAnchor.constraint(equalTo: hudCard.leadingAnchor, constant: 16),
             progressView.trailingAnchor.constraint(equalTo: hudCard.trailingAnchor, constant: -16),
-            progressView.bottomAnchor.constraint(equalTo: hudCard.bottomAnchor, constant: -14)
+            progressView.bottomAnchor.constraint(equalTo: hudCard.bottomAnchor, constant: -14),
+
+            stopButton.trailingAnchor.constraint(equalTo: hudCard.trailingAnchor, constant: -12),
+            stopButton.topAnchor.constraint(equalTo: hudCard.topAnchor, constant: 10),
+            stopButton.widthAnchor.constraint(equalToConstant: 58),
+            stopButton.heightAnchor.constraint(equalToConstant: 28)
         ])
 
         // ---- Overlay đến nơi + QR ----
@@ -261,6 +332,14 @@ class ViewController: UIViewController {
         arriveTitle.textAlignment = .center
         arriveOverlay.addSubview(arriveTitle)
 
+        arriveSubtitle.translatesAutoresizingMaskIntoConstraints = false
+        arriveSubtitle.text = ""
+        arriveSubtitle.font = .systemFont(ofSize: 14)
+        arriveSubtitle.textColor = .lightGray
+        arriveSubtitle.textAlignment = .center
+        arriveSubtitle.numberOfLines = 2
+        arriveOverlay.addSubview(arriveSubtitle)
+
         qrImageView.translatesAutoresizingMaskIntoConstraints = false
         qrImageView.contentMode = .scaleAspectFit
         qrImageView.backgroundColor = .white
@@ -280,18 +359,159 @@ class ViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             arriveTitle.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
-            arriveTitle.topAnchor.constraint(equalTo: arriveOverlay.safeAreaLayoutGuide.topAnchor, constant: 70),
+            arriveTitle.topAnchor.constraint(equalTo: arriveOverlay.safeAreaLayoutGuide.topAnchor, constant: 60),
+
+            arriveSubtitle.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
+            arriveSubtitle.topAnchor.constraint(equalTo: arriveTitle.bottomAnchor, constant: 8),
+            arriveSubtitle.leadingAnchor.constraint(equalTo: arriveOverlay.leadingAnchor, constant: 32),
+            arriveSubtitle.trailingAnchor.constraint(equalTo: arriveOverlay.trailingAnchor, constant: -32),
 
             qrImageView.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
-            qrImageView.topAnchor.constraint(equalTo: arriveTitle.bottomAnchor, constant: 24),
-            qrImageView.widthAnchor.constraint(equalToConstant: 260),
-            qrImageView.heightAnchor.constraint(equalToConstant: 260),
+            qrImageView.topAnchor.constraint(equalTo: arriveSubtitle.bottomAnchor, constant: 20),
+            qrImageView.widthAnchor.constraint(equalToConstant: 250),
+            qrImageView.heightAnchor.constraint(equalToConstant: 250),
 
             closeButton.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
-            closeButton.topAnchor.constraint(equalTo: qrImageView.bottomAnchor, constant: 28),
+            closeButton.topAnchor.constraint(equalTo: qrImageView.bottomAnchor, constant: 24),
             closeButton.widthAnchor.constraint(equalToConstant: 140),
             closeButton.heightAnchor.constraint(equalToConstant: 44)
         ])
+    }
+
+    // MARK: - Hàng điểm đến (động)
+
+    /// Tạo 1 hàng: [số] [ô nhập] [✕]
+    private func makeDestinationRow() -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = UIColor.white.withAlphaComponent(0.95)
+        row.layer.cornerRadius = 10
+        row.heightAnchor.constraint(equalToConstant: 40).isActive = true
+
+        let indexLabel = UILabel()
+        indexLabel.translatesAutoresizingMaskIntoConstraints = false
+        indexLabel.text = "\(destinationFields.count + 1)"
+        indexLabel.font = .boldSystemFont(ofSize: 13)
+        indexLabel.textColor = .white
+        indexLabel.textAlignment = .center
+        indexLabel.backgroundColor = .systemBlue
+        indexLabel.layer.cornerRadius = 11
+        indexLabel.clipsToBounds = true
+        row.addSubview(indexLabel)
+
+        let field = UITextField()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.textColor = .black
+        field.attributedPlaceholder = NSAttributedString(
+            string: "Nhập điểm đến \(destinationFields.count + 1)...",
+            attributes: [.foregroundColor: UIColor.darkGray]
+        )
+        field.returnKeyType = .go
+        field.delegate = self
+        field.addTarget(self, action: #selector(textChanged(_:)), for: .editingChanged)
+        row.addSubview(field)
+
+        let removeButton = UIButton(type: .system)
+        removeButton.translatesAutoresizingMaskIntoConstraints = false
+        removeButton.setTitle("✕", for: .normal)
+        removeButton.setTitleColor(.systemRed, for: .normal)
+        removeButton.titleLabel?.font = .boldSystemFont(ofSize: 15)
+        removeButton.addTarget(self, action: #selector(removeDestTapped(_:)), for: .touchUpInside)
+        removeButton.tag = destinationFields.count
+        removeButton.isHidden = destinationFields.isEmpty  // giữ ít nhất 1 hàng
+        row.addSubview(removeButton)
+
+        NSLayoutConstraint.activate([
+            indexLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 8),
+            indexLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            indexLabel.widthAnchor.constraint(equalToConstant: 22),
+            indexLabel.heightAnchor.constraint(equalToConstant: 22),
+
+            field.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: 8),
+            field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            field.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -6),
+
+            removeButton.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -8),
+            removeButton.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            removeButton.widthAnchor.constraint(equalToConstant: 26)
+        ])
+
+        destinationFields.append(field)
+        destinationCoords.append(nil)
+        stopCompleted.append(false)
+        return row
+    }
+
+    /// Đồng bộ nút ✕: chỉ hiện khi có từ 2 hàng trở lên
+    private func updateRemoveButtons() {
+        let show = destinationFields.count > 1
+        for view in destStack.arrangedSubviews {
+            if let btn = view.subviews.compactMap({ $0 as? UIButton }).first {
+                btn.isHidden = !show
+            }
+        }
+    }
+
+    /// Đưa toàn bộ ô về trạng thái chưa hoàn thành (số thứ tự thường)
+    private func resetStopUI() {
+        for (i, row) in destStack.arrangedSubviews.enumerated() {
+            if let lbl = row.subviews.first as? UILabel {
+                lbl.text = "\(i + 1)"
+                lbl.backgroundColor = .systemBlue
+            }
+            if let field = row.subviews.compactMap({ $0 as? UITextField }).first {
+                field.isEnabled = true
+                field.textColor = .black
+            }
+        }
+        updateRemoveButtons()
+    }
+
+    /// Đánh dấu 1 điểm đã hoàn thành (hiện QR): số → ✓ màu xanh lá
+    private func markStopCompletedUI(at index: Int) {
+        guard index < destStack.arrangedSubviews.count else { return }
+        let row = destStack.arrangedSubviews[index]
+        if let lbl = row.subviews.first as? UILabel {
+            lbl.text = "✓"
+            lbl.backgroundColor = .systemGreen
+        }
+        if let field = row.subviews.compactMap({ $0 as? UITextField }).first {
+            field.isEnabled = false
+            field.textColor = .systemGray
+        }
+    }
+
+    @objc private func addDestTapped() {
+        guard destinationFields.count < 5 else {
+            statusLabel.text = "Tối đa 5 điểm đến"
+            return
+        }
+        addDestinationRow()
+    }
+
+    private func addDestinationRow() {
+        let row = makeDestinationRow()
+        destStack.addArrangedSubview(row)
+        updateRemoveButtons()
+        // Cuộn focus xuống ô mới
+        destinationFields.last?.becomeFirstResponder()
+    }
+
+    @objc private func removeDestTapped(_ sender: UIButton) {
+        let idx = sender.tag
+        guard idx < destinationFields.count, destinationFields.count > 1 else { return }
+        // Gỡ khỏi stack
+        let row = destStack.arrangedSubviews[idx]
+        destStack.removeArrangedSubview(row)
+        row.removeFromSuperview()
+        destinationFields.remove(at: idx)
+        destinationCoords.remove(at: idx)
+        stopCompleted.remove(at: idx)
+        // Đánh lại số + tag
+        resetStopUI()
+        for (i, view) in destStack.arrangedSubviews.enumerated() {
+            if let btn = view.subviews.compactMap({ $0 as? UIButton }).first { btn.tag = i }
+        }
     }
 
     // MARK: - Services setup
@@ -343,60 +563,161 @@ class ViewController: UIViewController {
 
     @objc private func closeArriveOverlay() {
         arriveOverlay.isHidden = true
+        // Còn điểm nào chưa hoàn thành thì hướng dẫn người dùng tự chọn
+        if let idx = firstIncompleteStop() {
+            statusLabel.text = "Đã hoàn thành điểm \(currentStopIndex + 1) — chọn điểm \(idx + 1) và bấm BẮT ĐẦU"
+            destinationFields[idx].becomeFirstResponder()
+        } else {
+            statusLabel.text = "🎉 Đã hoàn thành TẤT CẢ điểm đến! Bấm BẮT ĐẦU để chạy lại từ đầu"
+        }
     }
 
-    @objc private func textChanged() {
-        guard let text = destinationField.text, !text.isEmpty else {
+    @objc private func textChanged(_ sender: UITextField) {
+        if let idx = destinationFields.firstIndex(of: sender) {
+            activeFieldIndex = idx
+        }
+        guard let text = sender.text, !text.isEmpty else {
             suggestionTable.isHidden = true
             suggestions = []
-            selectedCoordinate = nil
             return
         }
         completer.queryFragment = text
     }
 
+    @objc private func stopTapped() {
+        isNavigating = false
+        steps = []
+        suggestionTable.isHidden = true
+        hudCard.isHidden = true
+        if let poly = routePolyline {
+            mapView.removeOverlay(poly)
+            routePolyline = nil
+        }
+        statusLabel.text = "Đã dừng dẫn đường — bấm BẮT ĐẦU khi muốn đi tiếp"
+        ble.send(json: [
+            "speed": 0, "distance": 0,
+            "next_road": "", "next_road_sub": "",
+            "eta": "", "ete": "", "total_distance": "",
+            "maneuver": "straight"
+        ])
+    }
+
+    /// Điểm đến chưa hoàn thành đầu tiên có nội dung (theo thứ tự ô)
+    private func firstIncompleteStop() -> Int? {
+        for (i, field) in destinationFields.enumerated() {
+            let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !text.isEmpty && !stopCompleted[i] {
+                return i
+            }
+        }
+        return nil
+    }
+
     @objc private func goTapped() {
-        destinationField.resignFirstResponder()
+        view.endEditing(true)
         suggestionTable.isHidden = true
 
-        // Nếu đã chọn từ gợi ý thì dùng luôn
-        if let coord = selectedCoordinate {
-            beginNavigation(to: coord)
+        // Chưa nhập điểm nào → báo nhập
+        let hasAnyText = destinationFields.contains {
+            !($0.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        }
+        if !hasAnyText {
+            statusLabel.text = "Nhập ít nhất 1 điểm đến"
             return
         }
 
-        guard let address = destinationField.text, !address.isEmpty else { return }
+        // Nếu tất cả đã hoàn thành → reset để chạy lại từ đầu
+        if firstIncompleteStop() == nil {
+            for i in 0..<stopCompleted.count { stopCompleted[i] = false }
+            resetStopUI()
+            statusLabel.text = "Bắt đầu lượt mới — nhập/chọn điểm đến rồi bấm BẮT ĐẦU"
+            return
+        }
 
-        // Geocode địa chỉ -> tọa độ
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(address) { [weak self] placemarks, error in
-            guard let self = self,
-                  let coordinate = placemarks?.first?.location?.coordinate,
-                  error == nil else {
-                self?.statusLabel.text = "Không tìm thấy địa chỉ"
-                return
+        // Xây danh sách tọa độ theo đúng thứ tự các ô
+        var stopCoords: [CLLocationCoordinate2D?] = Array(repeating: nil, count: destinationFields.count)
+        var needGeocode: [(String, Int)] = []
+        for (i, field) in destinationFields.enumerated() {
+            let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if text.isEmpty { continue }
+            if let c = destinationCoords[i] {
+                stopCoords[i] = c
+            } else {
+                needGeocode.append((text, i))
             }
-            self.beginNavigation(to: coordinate)
         }
-    }
 
-    /// Bắt đầu dẫn đường — nếu chưa có GPS thì lưu lại và chờ fix vị trí đầu tiên
-    private func beginNavigation(to destination: CLLocationCoordinate2D) {
-        guard let origin = locationManager.location?.coordinate else {
-            pendingDestination = destination
-            statusLabel.text = "Đang chờ vị trí GPS..."
+        guard stopCoords.contains(where: { $0 != nil }) else {
+            statusLabel.text = "Nhập ít nhất 1 điểm đến"
             return
         }
-        startNavigation(from: origin, to: destination)
+
+        if needGeocode.isEmpty {
+            startFirstIncomplete(stopCoords)
+            return
+        }
+
+        statusLabel.text = "Đang tìm địa chỉ..."
+        let group = DispatchGroup()
+        var results: [Int: CLLocationCoordinate2D] = [:]
+        for (text, i) in needGeocode {
+            group.enter()
+            let geocoder = CLGeocoder()
+            geocoder.geocodeAddressString(text) { placemarks, error in
+                if let coord = placemarks?.first?.location?.coordinate {
+                    results[i] = coord
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            for (text, i) in needGeocode {
+                if let c = results[i] {
+                    stopCoords[i] = c
+                } else {
+                    self.statusLabel.text = "Không tìm thấy: \(text)"
+                    return
+                }
+            }
+            self.startFirstIncomplete(stopCoords)
+        }
     }
 
-    private func startNavigation(from origin: CLLocationCoordinate2D,
-                                 to destination: CLLocationCoordinate2D) {
-        pendingDestination = nil
+    /// Bắt đầu dẫn tới điểm chưa hoàn thành đầu tiên (chỉ 1 chặng)
+    private func startFirstIncomplete(_ stopCoords: [CLLocationCoordinate2D?]) {
+        guard let idx = firstIncompleteStop() else {
+            statusLabel.text = "Đã hoàn thành tất cả điểm đến!"
+            return
+        }
+        guard idx < stopCoords.count, let dest = stopCoords[idx] else {
+            statusLabel.text = "Điểm \(idx + 1) chưa có tọa độ — chọn từ gợi ý"
+            return
+        }
+
+        currentStopIndex = idx
+        totalStopsWithText = destinationFields.filter {
+            ($0.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty == false
+        }.count
+
         isNavigating = true
         hudCard.isHidden = false
         arriveOverlay.isHidden = true
-        statusLabel.text = "Đang lấy tuyến đường..."
+
+        guard let origin = locationManager.location?.coordinate else {
+            pendingDestination = dest
+            statusLabel.text = "Đang chờ vị trí GPS..."
+            return
+        }
+        fetchLeg(from: origin, to: dest)
+    }
+
+    /// Tính tuyến cho chặng hiện tại (vị trí hiện tại → điểm đến đã chọn)
+    private func fetchLeg(from origin: CLLocationCoordinate2D,
+                          to destination: CLLocationCoordinate2D) {
+        pendingDestination = nil
+        let total = max(totalStopsWithText, 1)
+        statusLabel.text = "Đang lấy tuyến tới điểm \(currentStopIndex + 1)/\(total)..."
         nav.fetchRoute(from: origin, to: destination) { [weak self] steps, _, totalDistanceText, coords in
             guard let self = self, !steps.isEmpty else {
                 self?.statusLabel.text = "Không có tuyến đường"
@@ -407,7 +728,7 @@ class ViewController: UIViewController {
             self.currentStepIndex = 0
             self.totalDistanceText = totalDistanceText
             self.drawRoute(coordinates: coords)
-            self.statusLabel.text = "Đang dẫn đường... (\(totalDistanceText))"
+            self.statusLabel.text = "Đang dẫn đường tới điểm \(self.currentStopIndex + 1)/\(total) (\(totalDistanceText))"
         }
     }
 
@@ -463,16 +784,35 @@ class ViewController: UIViewController {
         return UIImage(ciImage: scaled)
     }
 
-    /// Hiện overlay "ĐÃ ĐẾN NƠI" + mã QR thanh toán (nếu đã nhập)
+    /// Hiện overlay "ĐÃ ĐẾN NƠI / HOÀN THÀNH ĐƠN HÀNG" + mã QR thanh toán
     private func showArriveOverlay() {
         hudCard.isHidden = true
+        isNavigating = false
+
+        // Đánh dấu điểm vừa hoàn thành
+        if currentStopIndex < stopCompleted.count {
+            stopCompleted[currentStopIndex] = true
+        }
+        markStopCompletedUI(at: currentStopIndex)
+
+        let orderNo = currentStopIndex + 1
         if let qr = makeQRImage(from: qrString) {
             qrImageView.image = qr
             qrImageView.isHidden = false
         } else {
             qrImageView.isHidden = true
         }
-        arriveTitle.text = qrString.isEmpty ? "🏁 ĐÃ ĐẾN NƠI" : "🏁 QUÉT MÃ THANH TOÁN"
+
+        arriveTitle.text = "🏁 HOÀN THÀNH ĐƠN \(orderNo)"
+        if qrString.isEmpty {
+            arriveSubtitle.text = "Đã đến điểm \(orderNo) — nhập mã QR ở nút ◧ QR để quét thanh toán"
+        } else {
+            if let idx = firstIncompleteStop() {
+                arriveSubtitle.text = "Quét mã thanh toán xong → đóng, chọn điểm \(idx + 1) và bấm BẮT ĐẦU để đi tiếp"
+            } else {
+                arriveSubtitle.text = "Quét mã thanh toán xong → đóng. 🎉 Đã xong tất cả điểm đến!"
+            }
+        }
         arriveOverlay.isHidden = false
     }
 }
@@ -531,11 +871,12 @@ extension ViewController: UITableViewDataSource, UITableViewDelegate {
         let search = MKLocalSearch(request: request)
         search.start { [weak self] response, error in
             guard let self = self, let item = response?.mapItems.first else { return }
-            self.destinationField.text = completion.title
-            self.selectedCoordinate = item.placemark.coordinate
+            let idx = self.activeFieldIndex
+            guard idx < self.destinationFields.count else { return }
+            self.destinationFields[idx].text = completion.title
+            self.destinationCoords[idx] = item.placemark.coordinate
             self.suggestionTable.isHidden = true
-            self.destinationField.resignFirstResponder()
-            self.beginNavigation(to: item.placemark.coordinate)
+            self.destinationFields[idx].resignFirstResponder()
         }
     }
 }
@@ -559,7 +900,7 @@ extension ViewController: CLLocationManagerDelegate {
 
         // Có điểm đến đang chờ GPS — fix được vị trí là tự bắt đầu dẫn đường
         if let pending = pendingDestination {
-            startNavigation(from: coord, to: pending)
+            fetchLeg(from: coord, to: pending)
             return
         }
 
@@ -600,10 +941,10 @@ extension ViewController: CLLocationManagerDelegate {
         // Tốc độ (m/s -> km/h)
         let speed = max(0, Int(location.speed * 3.6))
 
-        // ---- ĐẾN NƠI: step cuối là arrive hoặc còn cách đích < 40m ----
+        // ---- ĐẾN NƠI: hiện QR thanh toán (hoàn thành đơn hàng) và DỪNG ----
+        // KHÔNG tự chuyển chặng — người dùng tự chọn điểm tiếp theo và bấm BẮT ĐẦU
         let isArriveStep = step.maneuver == "arrive" || currentStepIndex == steps.count - 1
         if isArriveStep && bestDistance < 40 {
-            isNavigating = false
             let json: [String: Any] = [
                 "speed": 0,
                 "distance": 0,
@@ -654,7 +995,12 @@ extension ViewController: CLLocationManagerDelegate {
 
 extension ViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        goTapped()
+        // Chuyển focus xuống ô tiếp theo, hoặc bắt đầu nếu là ô cuối
+        if let idx = destinationFields.firstIndex(of: textField), idx < destinationFields.count - 1 {
+            destinationFields[idx + 1].becomeFirstResponder()
+        } else {
+            goTapped()
+        }
         return true
     }
 }
