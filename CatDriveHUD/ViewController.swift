@@ -72,6 +72,8 @@ class ViewController: UIViewController {
 
     /// Tọa độ polyline tuyến đường hiện tại (để tính mini map gửi xuống ESP32)
     private var routeCoords: [CLLocationCoordinate2D] = []
+    /// Thời điểm gửi bitmap map lần cuối (Cách 2 — gửi mỗi 2 giây để giảm tải BLE)
+    private var lastMapSendTime: TimeInterval = 0
 
     /// Chuỗi mã QR thanh toán (VietQR) — nhập ở nút QR, lưu vĩnh viễn
     private var qrString: String {
@@ -992,6 +994,24 @@ extension ViewController: CLLocationManagerDelegate {
                 "route": NavigationManager.relativeRoutePoints(from: location, routeCoords: routeCoords)
             ]
             ble.send(json: json)
+        }
+
+        // Cách 2 (v14): gửi bitmap mini map app tự vẽ — mỗi 2 giây để giảm tải BLE
+        let nowMap = Date().timeIntervalSince1970
+        if nowMap - lastMapSendTime >= 2.0 {
+            lastMapSendTime = nowMap
+            let route = NavigationManager.relativeRoutePoints(from: location, routeCoords: routeCoords)
+            let bitmap = NavigationManager.makeMapBitmap(routePoints: route)
+            let hex = bitmap.map { String(format: "%02X", $0) }.joined()
+            var idx = hex.startIndex
+            var first = true
+            while idx < hex.endIndex {
+                let end = hex.index(idx, offsetBy: 180, limitedBy: hex.endIndex) ?? hex.endIndex
+                ble.sendRaw((first ? "M" : "m") + String(hex[idx..<end]))
+                first = false
+                idx = end
+            }
+            ble.sendRaw("Z")
         }
     }
 }

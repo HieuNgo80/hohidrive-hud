@@ -156,4 +156,77 @@ class NavigationManager {
         }
         return result
     }
+
+    /// Cách 2 (v14): app tự vẽ bitmap mini map 1-bit 128x64 từ các điểm tuyến đường
+    /// (heading-up: xe giữa màn, dy>0 vẽ LÊN TRÊN) rồi pack thành 1-bit giống SSD1306
+    /// - Returns: 1024 bytes, mỗi byte 8 pixel ngang (bit 7 = pixel trái nhất)
+    static func makeMapBitmap(routePoints: [[Int]],
+                              width: Int = 128,
+                              height: Int = 64) -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        let carX = width / 2
+        let carY = height / 2 + 6
+
+        // Scale giống firmware: vừa theo chiều cao phía trước + chiều ngang
+        var maxDy = 10, maxDx = 10
+        for p in routePoints where p.count >= 2 {
+            maxDy = max(maxDy, p[1])
+            maxDx = max(maxDx, abs(p[0]))
+        }
+        let scale = min(Float(carY - 4) / Float(maxDy),
+                        Float(width / 2 - 6) / Float(maxDx + 4))
+        let s = scale > 2.0 ? 2.0 : (scale < 0.05 ? 0.05 : scale)
+
+        // Chuyển các điểm sang tọa độ pixel
+        var pts: [(Int, Int)] = []
+        for p in routePoints where p.count >= 2 {
+            let x = carX + Int(Float(p[0]) * s)
+            let y = carY - Int(Float(p[1]) * s)
+            pts.append((x, y))
+        }
+
+        func setPixel(_ x: Int, _ y: Int) {
+            if x >= 0 && x < width && y >= 0 && y < height {
+                pixels[y * width + x] = 1
+            }
+        }
+
+        // Bresenham line
+        func drawLine(_ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int) {
+            var x0 = x0, y0 = y0
+            let dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1
+            let dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1
+            var err = dx + dy
+            while true {
+                setPixel(x0, y0)
+                if x0 == x1 && y0 == y1 { break }
+                let e2 = 2 * err
+                if e2 >= dy { err += dy; x0 += sx }
+                if e2 <= dx { err += dx; y0 += sy }
+            }
+        }
+
+        // Vẽ polyline tuyến đường
+        if pts.count >= 2 {
+            for i in 1..<pts.count {
+                drawLine(pts[i - 1].0, pts[i - 1].1, pts[i].0, pts[i].1)
+            }
+        }
+
+        // Vẽ xe: chấm tròn giữa màn
+        for dy in -2...2 {
+            for dx in -2...2 where dx * dx + dy * dy <= 4 {
+                setPixel(carX + dx, carY + dy)
+            }
+        }
+
+        // Pack thành 1-bit (giống Adafruit SSD1306 drawBitmap)
+        var bytes = [UInt8](repeating: 0, count: width * height / 8)
+        for y in 0..<height {
+            for x in 0..<width where pixels[y * width + x] == 1 {
+                bytes[y * (width / 8) + x / 8] |= UInt8(1 << (7 - (x % 8)))
+            }
+        }
+        return bytes
+    }
 }
