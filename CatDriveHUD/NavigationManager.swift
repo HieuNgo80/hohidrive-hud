@@ -90,8 +90,8 @@ class NavigationManager {
     }
 
     /// Tính các điểm tuyến đường phía trước dạng tọa độ TƯƠNG ĐỐI so với xe
-    /// để firmware vẽ mini map: dx > 0 = bên phải, dy > 0 = phía trước (đơn vị mét)
-    /// - Returns: [[dx,dy], ...] tối đa 14 điểm, mỗi điểm cách nhau ~15m
+    /// để firmware vẽ mini map heading-up: dx > 0 = bên phải, dy > 0 = phía trước (đơn vị mét)
+    /// - Returns: [[dx,dy], ...] tối đa 20 điểm, mỗi điểm cách nhau ~12m
     static func relativeRoutePoints(from location: CLLocation,
                                     routeCoords: [CLLocationCoordinate2D]) -> [[Int]] {
         guard routeCoords.count > 1 else { return [] }
@@ -132,7 +132,7 @@ class NavigationManager {
         var result: [[Int]] = []
         var last = routeCoords[startIdx]
         var accumulated: Double = 0
-        let spacing: Double = 15 // mét giữa các điểm gửi đi
+        let spacing: Double = 12 // mét giữa các điểm gửi đi
 
         func appendPoint(_ p: CLLocationCoordinate2D) {
             let dLat = (p.latitude - lat0) * 111320
@@ -151,7 +151,7 @@ class NavigationManager {
                 appendPoint(p)
                 last = p
                 accumulated = 0
-                if result.count >= 14 { break }
+                if result.count >= 20 { break }
             }
         }
         return result
