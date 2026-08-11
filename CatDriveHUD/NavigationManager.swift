@@ -88,4 +88,72 @@ class NavigationManager {
             || lower.contains("arrive") || lower.contains("destination") { return "arrive" }
         return "straight"
     }
+
+    /// Tính các điểm tuyến đường phía trước dạng tọa độ TƯƠNG ĐỐI so với xe
+    /// để firmware vẽ mini map: dx > 0 = bên phải, dy > 0 = phía trước (đơn vị mét)
+    /// - Returns: [[dx,dy], ...] tối đa 14 điểm, mỗi điểm cách nhau ~15m
+    static func relativeRoutePoints(from location: CLLocation,
+                                    routeCoords: [CLLocationCoordinate2D]) -> [[Int]] {
+        guard routeCoords.count > 1 else { return [] }
+
+        let lat0 = location.coordinate.latitude
+        let lng0 = location.coordinate.longitude
+
+        // Heading: ưu tiên course của GPS; nếu không có thì đoán từ 2 điểm polyline gần nhất
+        var heading = location.course
+        if heading < 0 {
+            var nearest = 0
+            var best = Double.greatestFiniteMagnitude
+            for (i, p) in routeCoords.enumerated() {
+                let d = CLLocation(latitude: p.latitude, longitude: p.longitude)
+                    .distance(from: location)
+                if d < best { best = d; nearest = i }
+            }
+            let a = routeCoords[nearest]
+            let b = routeCoords[min(nearest + 1, routeCoords.count - 1)]
+            let dLat = b.latitude - a.latitude
+            let dLng = b.longitude - a.longitude
+            heading = atan2(dLng * cos(a.latitude * .pi / 180), dLat) * 180 / .pi
+        }
+        if heading < 0 { heading += 360 }
+        let h = heading * .pi / 180
+        let cosH = cos(h)
+        let sinH = sin(h)
+
+        // Tìm điểm polyline gần xe nhất -> bắt đầu lấy từ đó
+        var startIdx = 0
+        var bestDist = Double.greatestFiniteMagnitude
+        for (i, p) in routeCoords.enumerated() {
+            let d = CLLocation(latitude: p.latitude, longitude: p.longitude)
+                .distance(from: location)
+            if d < bestDist { bestDist = d; startIdx = i }
+        }
+
+        var result: [[Int]] = []
+        var last = routeCoords[startIdx]
+        var accumulated: Double = 0
+        let spacing: Double = 15 // mét giữa các điểm gửi đi
+
+        func appendPoint(_ p: CLLocationCoordinate2D) {
+            let dLat = (p.latitude - lat0) * 111320
+            let dLng = (p.longitude - lng0) * 111320 * cos(lat0 * .pi / 180)
+            let forward = dLat * cosH + dLng * sinH   // dy: phía trước
+            let right = -dLat * sinH + dLng * cosH    // dx: bên phải
+            result.append([Int(right.rounded()), Int(forward.rounded())])
+        }
+
+        appendPoint(last)
+        for i in (startIdx + 1)..<routeCoords.count {
+            let p = routeCoords[i]
+            accumulated += CLLocation(latitude: p.latitude, longitude: p.longitude)
+                .distance(from: CLLocation(latitude: last.latitude, longitude: last.longitude))
+            if accumulated >= spacing {
+                appendPoint(p)
+                last = p
+                accumulated = 0
+                if result.count >= 14 { break }
+            }
+        }
+        return result
+    }
 }

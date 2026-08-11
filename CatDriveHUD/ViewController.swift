@@ -70,6 +70,9 @@ class ViewController: UIViewController {
     /// Tổng số điểm đến có nội dung (để hiển thị X/Y)
     private var totalStopsWithText = 0
 
+    /// Tọa độ polyline tuyến đường hiện tại (để tính mini map gửi xuống ESP32)
+    private var routeCoords: [CLLocationCoordinate2D] = []
+
     /// Chuỗi mã QR thanh toán (VietQR) — nhập ở nút QR, lưu vĩnh viễn
     private var qrString: String {
         get { UserDefaults.standard.string(forKey: "qrString") ?? "" }
@@ -727,6 +730,7 @@ class ViewController: UIViewController {
             self.steps = steps
             self.currentStepIndex = 0
             self.totalDistanceText = totalDistanceText
+            self.routeCoords = coords
             self.drawRoute(coordinates: coords)
             self.statusLabel.text = "Đang dẫn đường tới điểm \(self.currentStopIndex + 1)/\(total) (\(totalDistanceText))"
         }
@@ -984,7 +988,8 @@ extension ViewController: CLLocationManagerDelegate {
                 "eta": formatter.string(from: eta),
                 "ete": Self.formatDuration(remainingSec),
                 "total_distance": totalDistanceText,
-                "maneuver": step.maneuver
+                "maneuver": step.maneuver,
+                "route": NavigationManager.relativeRoutePoints(from: location, routeCoords: routeCoords)
             ]
             ble.send(json: json)
         }
