@@ -52,6 +52,19 @@ class ViewController: UIViewController {
     private var pendingDestination: CLLocationCoordinate2D?
     private var lastSendTime: TimeInterval = 0
 
+    /// Danh sách các bước rẽ tiếp theo (tối đa 4) — gửi cho màn OLED cột bên phải
+    private func nextManeuversList() -> String {
+        var list: [String] = []
+        let startIdx = currentStepIndex + 1
+        let endIdx = min(startIdx + 4, steps.count)
+        if startIdx < endIdx {
+            for i in startIdx..<endIdx {
+                list.append(steps[i].maneuver)
+            }
+        }
+        return list.joined(separator: ",")
+    }
+
     /// Chuỗi mã QR thanh toán (VietQR) — nhập ở nút QR, lưu vĩnh viễn
     private var qrString: String {
         get { UserDefaults.standard.string(forKey: "qrString") ?? "" }
@@ -171,7 +184,7 @@ class ViewController: UIViewController {
         navBanner.layer.shadowRadius = 10
         view.addSubview(navBanner)
         NSLayoutConstraint.activate([
-            navBanner.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 6),
+            navBanner.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 34),
             navBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             navBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             navBanner.heightAnchor.constraint(equalToConstant: 60)
@@ -714,7 +727,8 @@ extension ViewController: CLLocationManagerDelegate {
                 "ete": "",
                 "total_distance": totalDistanceText,
                 "maneuver": "arrive",
-                "qr": qrString
+                "qr": qrString,
+                "next": ""
             ]
             ble.send(json: json)
             showArriveOverlay()
@@ -753,7 +767,8 @@ extension ViewController: CLLocationManagerDelegate {
                 "eta": formatter.string(from: eta),
                 "ete": Self.formatDuration(remainingSec),
                 "total_distance": totalDistanceText,
-                "maneuver": step.maneuver
+                "maneuver": step.maneuver,
+                "next": nextManeuversList()
             ]
             ble.send(json: json)
         }
