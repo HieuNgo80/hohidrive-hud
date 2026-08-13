@@ -41,14 +41,6 @@ class BLEManager: NSObject {
               let peripheral = peripheral else { return }
         peripheral.writeValue(data, for: ch, type: .withoutResponse)
     }
-
-    /// Gửi chuỗi thô (chunk bitmap map cho Cách 2) — withoutResponse
-    func sendRaw(_ string: String) {
-        guard let ch = writeCharacteristic,
-              let data = string.data(using: .utf8),
-              let peripheral = peripheral else { return }
-        peripheral.writeValue(data, for: ch, type: .withoutResponse)
-    }
 }
 
 extension BLEManager: CBCentralManagerDelegate {
