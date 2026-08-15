@@ -4,7 +4,8 @@ App điều hướng **Apple MapKit** trên iPhone, gửi dữ liệu qua **BLE*
 Không cần Mac, **không cần Google Cloud / API key / thẻ thanh toán** — hoàn toàn miễn phí:
 build bằng GitHub Actions (macOS đám mây) + cài bằng AltStore (Apple ID thường).
 
-> **Bản V8:** chuyển từ Google Maps SDK → Apple MapKit (bản đồ Apple, free 100%).
+> **Bản V8+:** dùng Apple MapKit (bản đồ Apple, free 100%).
+> **Bản 1.9 / build 10:** tách tên đường khỏi câu chỉ dẫn, hỗ trợ U-turn và chỉ đổi mũi tên rẽ khi còn ≤100 m.
 > Không cần bật API, không cần billing, không cần key — khỏi lo vụ Maps billing riêng.
 
 ## Kiến trúc
@@ -29,8 +30,11 @@ iPhone (app này)                        ESP32-C3 HUD
 {
   "speed": 55,
   "distance": 240,
-  "next_road": "Đi về hướng tây trên đường Nguyễn Huệ",
-  "next_road_sub": "",
+  "next_road": "đường Nguyễn Huệ",
+  "next_road_sub": "Rẽ trái vào đường Nguyễn Huệ",
+  "current_road": "đường Lê Lợi",
+  "turn_road": "đường Nguyễn Huệ",
+  "turn_text": "Rẽ trái vào đường Nguyễn Huệ",
   "eta": "13:05",
   "ete": "1 giờ 20 phút",
   "total_distance": "25.4 km",
@@ -38,7 +42,11 @@ iPhone (app này)                        ESP32-C3 HUD
 }
 ```
 
-`maneuver`: `left` | `right` | `straight` | `arrive`
+`maneuver`: `left` | `right` | `straight` | `uturn` | `arrive`
+
+- Khi còn **trên 100 m** trước một thao tác rẽ, app gửi `maneuver: straight` để ESP32 giữ icon ↑.
+- Khi còn **≤100 m**, app gửi hướng thật (`left/right/uturn`) và `next_road` là tên đường sẽ rẽ vào.
+- `next_road_sub` / `turn_text` giữ nguyên câu chỉ dẫn đầy đủ để debug nếu cần.
 
 ---
 

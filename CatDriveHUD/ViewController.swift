@@ -65,6 +65,10 @@ class ViewController: UIViewController {
     private var pendingDestination: CLLocationCoordinate2D?
     private var lastSendTime: TimeInterval = 0
 
+    // Chỉ báo rẽ thật khi còn <= 100 m. Trước đó ESP32 nhận "straight"
+    // để giữ mũi tên ↑ và chỉ hiển thị tên con đường hiện tại.
+    private let turnPreviewDistanceM: Double = 100.0
+
     /// Chỉ số điểm đến đang được dẫn đường (trong destinationFields)
     private var currentStopIndex = 0
     /// Tổng số điểm đến có nội dung (để hiển thị X/Y)
@@ -779,11 +783,40 @@ class ViewController: UIViewController {
 
     private func arrowSymbol(for maneuver: String) -> String {
         switch maneuver {
-        case "left": return "←"
-        case "right": return "→"
-        case "arrive": return "🏁"
+        case "left": return "↰"
+        case "right": return "↱"
+        case "uturn": return "↶"
+        case "arrive": return "✓"
         default: return "↑"
         }
+    }
+
+    /// Tên đường hiện tại / đường sắp rẽ.
+    /// >100 m: đường đang đi.
+    /// <=100 m: "Rẽ ... qua" + đường sắp vào (firmware tự thêm prefix khi maneuver là turn).
+    private func roadNameForHUD(stepIndex: Int, distance: Double) -> String {
+        guard stepIndex >= 0 && stepIndex < steps.count else { return "" }
+        let step = steps[stepIndex]
+
+        if distance <= turnPreviewDistanceM, step.maneuver != "straight", step.maneuver != "arrive" {
+            return step.roadName
+        }
+
+        // Khi còn xa thao tác, ưu tiên tên đường của chặng trước (đường đang chạy).
+        if stepIndex > 0 {
+            let previous = steps[stepIndex - 1].roadName
+            if !previous.isEmpty { return previous }
+        }
+        return step.roadName
+    }
+
+    /// Firmware V6/V7/V8/V9/V10 hiện có ngưỡng nội bộ 150 m.
+    /// Để thực tế đổi hướng ở 100 m mà không cần sửa firmware, app chỉ gửi maneuver
+    /// thật khi <=100 m; trước đó gửi straight.
+    private func displayManeuverForHUD(step: RouteStep, distance: Double) -> String {
+        if step.maneuver == "arrive" { return "arrive" }
+        if step.maneuver == "straight" { return "straight" }
+        return distance <= turnPreviewDistanceM ? step.maneuver : "straight"
     }
 
     /// Tạo ảnh QR từ chuỗi VietQR bằng CoreImage
@@ -978,10 +1011,24 @@ extension ViewController: CLLocationManagerDelegate {
         }
 
         // Cập nhật HUD card trên app
-        arrowLabel.text = arrowSymbol(for: step.maneuver)
-        arrowLabel.textColor = step.maneuver == "arrive" ? .systemYellow : UIColor(red: 0.988, green: 0.710, blue: 0.769, alpha: 1)
+        let displayManeuver = displayManeuverForHUD(step: step, distance: bestDistance)
+        arrowLabel.text = arrowSymbol(for: displayManeuver)
+        arrowLabel.textColor = displayManeuver == "arrive" ? .systemYellow : UIColor(red: 0.988, green: 0.710, blue: 0.769, alpha: 1)
         speedLabel.text = "\(speed)"
-        roadLabel.text = step.instruction
+
+        let hudRoad = roadNameForHUD(stepIndex: currentStepIndex, distance: bestDistance)
+        if bestDistance <= turnPreviewDistanceM && step.maneuver != "straight" && step.maneuver != "arrive" {
+            let turnText: String
+            switch step.maneuver {
+            case "left": turnText = "Rẽ trái qua"
+            case "right": turnText = "Rẽ phải qua"
+            case "uturn": turnText = "Quay đầu qua"
+            default: turnText = ""
+            }
+            roadLabel.text = hudRoad.isEmpty ? turnText : "\(turnText) \(hudRoad)"
+        } else {
+            roadLabel.text = hudRoad
+        }
         etaLabel.text = "Còn \(Int(bestDistance)) m · ETA \(formatter.string(from: eta)) · \(Self.formatDuration(remainingSec))"
         if totalDistanceText.contains("km"), let totalKM = Double(totalDistanceText.replacingOccurrences(of: " km", with: "")) {
             let travelled = max(0, totalKM * 1000 - Double(bestDistance))
@@ -992,15 +1039,21 @@ extension ViewController: CLLocationManagerDelegate {
         let now = Date().timeIntervalSince1970
         if now - lastSendTime >= 1.0 || step.maneuver == "arrive" {
             lastSendTime = now
+            let displayManeuver = displayManeuverForHUD(step: step, distance: bestDistance)
+            let roadForHUD = roadNameForHUD(stepIndex: currentStepIndex, distance: bestDistance)
             let json: [String: Any] = [
                 "speed": speed,
                 "distance": Int(bestDistance),
-                "next_road": step.instruction,
-                "next_road_sub": "",
+                "next_road": roadForHUD,
+                "next_road_sub": step.instruction,
+                "current_road": currentStepIndex > 0 ? steps[currentStepIndex - 1].roadName : roadForHUD,
+                "turn_road": step.roadName,
+                "turn_text": step.instruction,
                 "eta": formatter.string(from: eta),
                 "ete": Self.formatDuration(remainingSec),
                 "total_distance": totalDistanceText,
-                "maneuver": step.maneuver,
+                "maneuver": displayManeuver,
+                "actual_maneuver": step.maneuver,
                 "next": nextManeuversList()
             ]
             ble.send(json: json)

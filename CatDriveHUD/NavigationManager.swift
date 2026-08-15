@@ -4,8 +4,9 @@ import MapKit
 
 /// Một bước rẽ trong tuyến đường (từ Apple MapKit / MKDirections)
 struct RouteStep {
-    let instruction: String   // chỉ dẫn: "Rẽ trái vào Lê Lợi"
-    let maneuver: String      // left | right | straight | arrive
+    let instruction: String   // chỉ dẫn đầy đủ từ Apple MapKit
+    let roadName: String      // tên đường thật, tách khỏi câu "Rẽ trái vào..."
+    let maneuver: String      // left | right | straight | uturn | arrive
     let endLat: Double
     let endLng: Double
     let distance: Int         // mét tới hết bước này
@@ -48,9 +49,11 @@ class NavigationManager {
                 let stepDuration = totalDistance > 0
                     ? Int(Double(s.distance) / totalDistance * Double(totalDurationSec))
                     : 0
+                let instruction = s.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
                 steps.append(RouteStep(
-                    instruction: s.instructions,
-                    maneuver: Self.mapManeuver(s.instructions),
+                    instruction: instruction,
+                    roadName: Self.extractRoadName(from: instruction),
+                    maneuver: Self.mapManeuver(instruction),
                     endLat: end.latitude,
                     endLng: end.longitude,
                     distance: Int(s.distance),
@@ -79,14 +82,80 @@ class NavigationManager {
         return "\(Int(meters)) m"
     }
 
-    /// Đoán maneuver từ chữ chỉ dẫn của Apple (tiếng Việt/Anh)
+    /// Chuẩn hóa hướng rẽ từ câu chỉ dẫn của Apple MapKit.
+    /// Quan trọng: kiểm tra quay đầu / đến nơi trước trái-phải.
     static func mapManeuver(_ instruction: String) -> String {
-        let lower = instruction.lowercased()
-        if lower.contains("trái") || lower.contains("left") { return "left" }
-        if lower.contains("phải") || lower.contains("right") { return "right" }
-        if lower.contains("đến nơi") || lower.contains("điểm đến")
-            || lower.contains("arrive") || lower.contains("destination") { return "arrive" }
+        let lower = instruction.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+
+        if lower.contains("quay dau") || lower.contains("u-turn") || lower.contains("u turn")
+            || lower.contains("make a u-turn") || lower.contains("turn around") {
+            return "uturn"
+        }
+        if lower.contains("den noi") || lower.contains("diem den")
+            || lower.contains("arrive") || lower.contains("destination")
+            || lower.contains("you have arrived") {
+            return "arrive"
+        }
+        if lower.contains("re trai") || lower.contains("left") { return "left" }
+        if lower.contains("re phai") || lower.contains("right") { return "right" }
         return "straight"
+    }
+
+    /// Tách tên đường khỏi câu chỉ dẫn của Apple.
+    /// Ví dụ: "Rẽ trái vào đường Nguyễn Huệ" -> "đường Nguyễn Huệ"
+    /// hoặc "Turn right onto Queen St" -> "Queen St".
+    static func extractRoadName(from instruction: String) -> String {
+        var text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "" }
+
+        let lower = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+
+        let separators = [
+            " vào ", " trên ", " theo ", " qua ", " đến ",
+            " onto ", " on ", " via ", " toward ", " towards ", " along "
+        ]
+
+        // Ưu tiên các cụm có giới từ vì chúng thường đứng ngay trước tên đường.
+        for separator in separators {
+            let sepLower = separator.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            if let range = lower.range(of: sepLower) {
+                let start = range.upperBound
+                let utfStart = lower.distance(from: lower.startIndex, to: start)
+                let originalStart = text.index(text.startIndex, offsetBy: min(utfStart, text.count))
+                var road = String(text[originalStart...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                road = road.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:()"))
+                if !road.isEmpty {
+                    // Apple đôi khi trả "đường ..."; giữ nguyên để đúng tên hiển thị.
+                    return road
+                }
+            }
+        }
+
+        // Nếu câu chỉ có tên đường (ví dụ "Nguyễn Huệ"), giữ nguyên.
+        let prefixes = [
+            "turn left ", "turn right ", "turn around ",
+            "rẽ trái ", "rẽ phải ", "quay đầu ",
+            "keep left ", "keep right ", "slight left ", "slight right ",
+            "sharp left ", "sharp right ", "continue "
+        ]
+        for prefix in prefixes {
+            let p = prefix.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            if lower.hasPrefix(p) {
+                let startOffset = p.count
+                let originalStart = text.index(text.startIndex, offsetBy: min(startOffset, text.count))
+                let road = String(text[originalStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !road.isEmpty { return road }
+            }
+        }
+
+        // Các câu "Head north..." thường không chứa tên đường; không trả lại cả câu
+        // vì firmware sẽ tưởng đó là tên đường.
+        if lower.contains("head ") || lower.contains("di ve huong") || lower.contains("di ve") {
+            return ""
+        }
+
+        return text
     }
 
     /// Tính các điểm tuyến đường phía trước dạng tọa độ TƯƠNG ĐỐI so với xe
