@@ -151,10 +151,12 @@ final class ViewController: UIViewController {
         setupMap()
         setupHeader()
         setupDestinationCard()
+        // bottomBar must be in the view hierarchy before setupMapControls()
+        // because the map controls are constrained relative to bottomBar.topAnchor.
+        setupBottomBar()
         setupMapControls()
         setupNavigationCard()
         setupSummaryCard()
-        setupBottomBar()
         setupOrdersPanel()
         setupArrivalOverlay()
     }
