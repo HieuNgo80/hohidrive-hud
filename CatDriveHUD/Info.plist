@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key><string>Hohi Drive HUD</string>
+    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleName</key><string>CatDriveHUD</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>2.0</string>
+    <key>CFBundleVersion</key><string>11</string>
+    <key>UILaunchScreen</key><dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+    <key>NSLocationWhenInUseUsageDescription</key><string>Cần vị trí để dẫn đường và hiển thị thông tin lên HUD.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>Cần vị trí chạy nền để tiếp tục dẫn đường khi điện thoại bị khóa hoặc để xuống.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Cần Bluetooth để kết nối với màn hình HUD ESP32.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key><string>Cần Bluetooth để kết nối với màn hình HUD ESP32.</string>
+    <key>UIBackgroundModes</key><array><string>location</string><string>bluetooth-central</string></array>
+    <key>CFBundleIconName</key><string>AppIcon</string>
+</dict>
+</plist>
