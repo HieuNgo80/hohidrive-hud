@@ -105,34 +105,28 @@ class NavigationManager {
     /// Ví dụ: "Rẽ trái vào đường Nguyễn Huệ" -> "đường Nguyễn Huệ"
     /// hoặc "Turn right onto Queen St" -> "Queen St".
     static func extractRoadName(from instruction: String) -> String {
-        var text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "" }
 
-        let lower = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-
+        // Dùng range trực tiếp trên chuỗi gốc. Không dùng chuỗi đã bỏ dấu để
+        // tính offset vì Unicode tiếng Việt có thể làm lệch vị trí ký tự.
         let separators = [
-            " vào ", " trên ", " theo ", " qua ", " đến ",
+            " vào ", " tại ", " trên ", " theo ", " qua ", " đến ",
             " onto ", " on ", " via ", " toward ", " towards ", " along "
         ]
 
-        // Ưu tiên các cụm có giới từ vì chúng thường đứng ngay trước tên đường.
         for separator in separators {
-            let sepLower = separator.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            if let range = lower.range(of: sepLower) {
-                let start = range.upperBound
-                let utfStart = lower.distance(from: lower.startIndex, to: start)
-                let originalStart = text.index(text.startIndex, offsetBy: min(utfStart, text.count))
-                var road = String(text[originalStart...])
+            if let range = text.range(of: separator, options: [.caseInsensitive, .diacriticInsensitive]) {
+                var road = String(text[range.upperBound...])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                road = road.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:()"))
+                road = road.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
                 if !road.isEmpty {
-                    // Apple đôi khi trả "đường ..."; giữ nguyên để đúng tên hiển thị.
                     return road
                 }
             }
         }
 
-        // Nếu câu chỉ có tên đường (ví dụ "Nguyễn Huệ"), giữ nguyên.
+        // Một số câu của Apple chỉ đặt tên đường ngay sau động từ.
         let prefixes = [
             "turn left ", "turn right ", "turn around ",
             "rẽ trái ", "rẽ phải ", "quay đầu ",
@@ -140,21 +134,19 @@ class NavigationManager {
             "sharp left ", "sharp right ", "continue "
         ]
         for prefix in prefixes {
-            let p = prefix.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            if lower.hasPrefix(p) {
-                let startOffset = p.count
-                let originalStart = text.index(text.startIndex, offsetBy: min(startOffset, text.count))
-                let road = String(text[originalStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.range(of: prefix, options: [.caseInsensitive, .diacriticInsensitive])?.lowerBound == text.startIndex {
+                let start = text.index(text.startIndex, offsetBy: prefix.count, limitedBy: text.endIndex) ?? text.endIndex
+                let road = String(text[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !road.isEmpty { return road }
             }
         }
 
-        // Các câu "Head north..." thường không chứa tên đường; không trả lại cả câu
-        // vì firmware sẽ tưởng đó là tên đường.
+        let lower = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
         if lower.contains("head ") || lower.contains("di ve huong") || lower.contains("di ve") {
             return ""
         }
 
+        // Nếu Apple đã trả thẳng tên đường, giữ nguyên.
         return text
     }
 
