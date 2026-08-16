@@ -919,6 +919,7 @@ final class ViewController: UIViewController {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.requestAlwaysAuthorization()
+        locationManager.startUpdatingLocation()
     }
 
     private func setupBLE() {

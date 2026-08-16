@@ -44,6 +44,7 @@ class NavigationManager {
             var steps: [RouteStep] = []
             for s in route.steps {
                 // Điểm cuối của bước này = điểm cuối polyline của step
+                guard s.polyline.pointCount > 0 else { continue }
                 let pts = s.polyline.points()
                 let end = pts[s.polyline.pointCount - 1].coordinate
                 let stepDuration = totalDistance > 0
