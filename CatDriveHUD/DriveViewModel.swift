@@ -55,7 +55,7 @@ struct CompletedTrip: Identifiable, Codable {
 }
 
 final class DriveViewModel: NSObject, ObservableObject {
-    @Published var stops: [DriveStop] = [DriveStop(address: "Nhập điểm đến đầu tiên…")]
+    @Published var stops: [DriveStop] = [DriveStop(address: "")]
     @Published var currentLocation: CLLocation?
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published var routeSteps: [RouteStep] = []
@@ -72,7 +72,9 @@ final class DriveViewModel: NSObject, ObservableObject {
     @Published var showArrival = false
     @Published var lastCompletedStopNumber = 0
     @Published var mapType: MKMapType = .standard
-    @Published var followUser = true
+    @Published var followUser = false
+    @Published var headingMode = false
+    @Published var centerRequest = 0
     @Published var selectedOrderTab = 0
 
     let maxStops = 5
@@ -110,10 +112,12 @@ final class DriveViewModel: NSObject, ObservableObject {
         activeStopID = stops.last?.id
     }
 
-    func removeStop(at index: Int) {
-        guard stops.count > 1, stops.indices.contains(index), !stops[index].completed else { return }
+    func removeStop(id: UUID) {
+        guard stops.count > 1, let index = stops.firstIndex(where: { $0.id == id }), !stops[index].completed else { return }
+        let wasActive = activeStopID == id
         stops.remove(at: index)
-        if activeStopID == nil { activeStopID = stops.last?.id }
+        if wasActive { activeStopID = stops.indices.contains(index) ? stops[index].id : stops.last?.id }
+        suggestions = []
     }
 
     func updateStop(_ text: String, id: UUID) {
@@ -177,8 +181,23 @@ final class DriveViewModel: NSObject, ObservableObject {
         statusText = "Đã dừng chuyến"
     }
 
-    func centerOnUser() { followUser = true }
-    func zoomMap(_ factor: Double, mapView: MKMapView) {
+    func centerOnUser() {
+        followUser = true
+        centerRequest &+= 1
+        mapViewTrackingHint()
+    }
+
+    func toggleHeading() {
+        headingMode.toggle()
+        followUser = true
+        centerRequest &+= 1
+        mapViewTrackingHint()
+    }
+
+    private func mapViewTrackingHint() {}
+
+    func zoomMap(_ factor: Double, mapView: MKMapView?) {
+        guard let mapView else { return }
         var r = mapView.region
         r.span.latitudeDelta *= factor
         r.span.longitudeDelta *= factor
@@ -260,6 +279,7 @@ final class DriveViewModel: NSObject, ObservableObject {
             self.currentStepIndex = 0
             self.isNavigating = true
             self.followUser = true
+            self.centerRequest &+= 1
             self.statusText = "Đang dẫn đường · Chặng \(stopIndex + 1)/\(self.stops.count) · \(totalDistanceText)"
             self.sendCurrentNavigation(force: true)
         }

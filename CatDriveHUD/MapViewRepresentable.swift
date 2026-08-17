@@ -14,6 +14,7 @@ struct DriveMapView: UIViewRepresentable {
         map.pointOfInterestFilter = .includingAll
         map.isRotateEnabled = true
         map.isPitchEnabled = true
+        map.showsCompass = false
         map.overrideUserInterfaceStyle = .light
         map.mapType = model.mapType
         mapView = map
@@ -22,17 +23,20 @@ struct DriveMapView: UIViewRepresentable {
 
     func updateUIView(_ map: MKMapView, context: Context) {
         map.mapType = model.mapType
-        if model.followUser, let loc = model.currentLocation?.coordinate {
-            let span = MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
-            map.setRegion(MKCoordinateRegion(center: loc, span: span), animated: true)
+
+        if context.coordinator.lastCenterRequest != model.centerRequest {
+            context.coordinator.lastCenterRequest = model.centerRequest
+            map.setUserTrackingMode(model.headingMode ? .followWithHeading : .follow, animated: true)
         }
+
         context.coordinator.syncRoute(on: map, coordinates: model.routeCoordinates)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         let parent: DriveMapView
         var routeOverlay: MKPolyline?
-        var lastCenteredLocation: CLLocationCoordinate2D?
+        var lastCenterRequest = -1
+
         init(_ parent: DriveMapView) { self.parent = parent }
 
         func syncRoute(on map: MKMapView, coordinates: [CLLocationCoordinate2D]) {
@@ -42,7 +46,7 @@ struct DriveMapView: UIViewRepresentable {
             routeOverlay = poly
             map.addOverlay(poly)
             if !parent.model.isNavigating {
-                map.setVisibleMapRect(poly.boundingMapRect, edgePadding: UIEdgeInsets(top: 110, left: 40, bottom: 220, right: 40), animated: true)
+                map.setVisibleMapRect(poly.boundingMapRect, edgePadding: UIEdgeInsets(top: 220, left: 35, bottom: 180, right: 70), animated: true)
             }
         }
 
