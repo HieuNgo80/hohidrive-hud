@@ -5,11 +5,13 @@ import CoreImage
 
 final class ViewController: UIViewController {
 
-    // MARK: - Theme
-    private let pink = UIColor(red: 0.98, green: 0.28, blue: 0.68, alpha: 1)
-    private let purple = UIColor(red: 0.39, green: 0.25, blue: 0.95, alpha: 1)
-    private let panel = UIColor(red: 0.045, green: 0.065, blue: 0.10, alpha: 0.94)
-    private let softPanel = UIColor(red: 0.08, green: 0.10, blue: 0.15, alpha: 0.92)
+    // MARK: - Theme — Neon Glass
+    private let pink = UIColor(red: 1.00, green: 0.30, blue: 0.62, alpha: 1)
+    private let purple = UIColor(red: 0.55, green: 0.36, blue: 1.00, alpha: 1)
+    private let cyan = UIColor(red: 0.30, green: 0.84, blue: 1.00, alpha: 1)
+    private let panel = UIColor(red: 0.055, green: 0.072, blue: 0.115, alpha: 0.86)
+    private let softPanel = UIColor(red: 0.09, green: 0.115, blue: 0.17, alpha: 0.92)
+    private let rowSurface = UIColor(red: 0.10, green: 0.125, blue: 0.185, alpha: 1)
 
     // MARK: - Map / top UI
     private let mapView = MKMapView()
@@ -74,6 +76,8 @@ final class ViewController: UIViewController {
     private let arriveTitle = UILabel()
     private let arriveSubtitle = UILabel()
     private let qrImageView = UIImageView()
+    private let arriveCheckIcon = UIImageView()
+    private let arriveCloseButton = UIButton(type: .system)
 
     // MARK: - Services
     private let locationManager = CLLocationManager()
@@ -143,6 +147,15 @@ final class ViewController: UIViewController {
         if let gradient = startButton.layer.sublayers?.first(where: { $0.name == "startGradient" }) as? CAGradientLayer {
             gradient.frame = startButton.bounds
         }
+        if let gradient = logoLabel.layer.sublayers?.first(where: { $0.name == "logoGradient" }) as? CAGradientLayer {
+            gradient.frame = logoLabel.bounds
+        }
+        if let gradient = arriveCloseButton.layer.sublayers?.first(where: { $0.name == "closeGradient" }) as? CAGradientLayer {
+            gradient.frame = arriveCloseButton.bounds
+        }
+        if let gradient = header.layer.sublayers?.first(where: { $0.name == "headerGradient" }) as? CAGradientLayer {
+            gradient.frame = header.bounds
+        }
     }
 
     // MARK: - UI setup
@@ -183,76 +196,101 @@ final class ViewController: UIViewController {
 
     private func setupHeader() {
         header.translatesAutoresizingMaskIntoConstraints = false
-        header.backgroundColor = UIColor.black.withAlphaComponent(0.72)
         view.addSubview(header)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 108)
+            header.heightAnchor.constraint(equalToConstant: 116)
         ])
+
+        let gradient = CAGradientLayer()
+        gradient.name = "headerGradient"
+        gradient.colors = [
+            UIColor.black.withAlphaComponent(0.92).cgColor,
+            UIColor.black.withAlphaComponent(0.55).cgColor,
+            UIColor.clear.cgColor
+        ]
+        gradient.locations = [0.0, 0.65, 1.0]
+        header.layer.insertSublayer(gradient, at: 0)
 
         logoLabel.translatesAutoresizingMaskIntoConstraints = false
         logoLabel.text = "H"
         logoLabel.textAlignment = .center
-        logoLabel.font = .systemFont(ofSize: 27, weight: .black)
+        logoLabel.font = roundedFont(24, .black)
         logoLabel.textColor = .white
-        logoLabel.backgroundColor = pink
-        logoLabel.layer.cornerRadius = 13
-        logoLabel.clipsToBounds = true
+        logoLabel.layer.cornerRadius = 15
+        let logoGradient = CAGradientLayer()
+        logoGradient.name = "logoGradient"
+        logoGradient.cornerRadius = 15
+        logoGradient.colors = [pink.cgColor, purple.cgColor]
+        logoGradient.startPoint = CGPoint(x: 0, y: 0)
+        logoGradient.endPoint = CGPoint(x: 1, y: 1)
+        logoLabel.layer.insertSublayer(logoGradient, at: 0)
+        logoLabel.layer.shadowColor = pink.cgColor
+        logoLabel.layer.shadowOpacity = 0.45
+        logoLabel.layer.shadowRadius = 10
+        logoLabel.layer.shadowOffset = CGSize(width: 0, height: 4)
         header.addSubview(logoLabel)
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.text = "HOHI DRIVE"
-        titleLabel.font = .systemFont(ofSize: 23, weight: .bold)
+        titleLabel.font = roundedFont(22, .heavy)
         titleLabel.textColor = .white
         header.addSubview(titleLabel)
 
         connectionDot.translatesAutoresizingMaskIntoConstraints = false
         connectionDot.backgroundColor = .systemGreen
-        connectionDot.layer.cornerRadius = 5
+        connectionDot.layer.cornerRadius = 4
+        connectionDot.layer.shadowColor = UIColor.systemGreen.cgColor
+        connectionDot.layer.shadowOpacity = 0.8
+        connectionDot.layer.shadowRadius = 4
+        connectionDot.layer.shadowOffset = .zero
         header.addSubview(connectionDot)
 
         connectionLabel.translatesAutoresizingMaskIntoConstraints = false
         connectionLabel.text = "Đã kết nối"
-        connectionLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        connectionLabel.textColor = .lightGray
+        connectionLabel.font = .systemFont(ofSize: 12.5, weight: .medium)
+        connectionLabel.textColor = UIColor.white.withAlphaComponent(0.65)
         header.addSubview(connectionLabel)
 
-        styleIconButton(qrButton, systemName: "qrcode", title: "QR", filled: true)
+        qrButton.translatesAutoresizingMaskIntoConstraints = false
+        qrButton.setImage(UIImage(systemName: "qrcode"), for: .normal)
+        qrButton.tintColor = .white
+        qrButton.backgroundColor = softPanel
+        qrButton.layer.cornerRadius = 19
+        qrButton.layer.borderWidth = 1
+        qrButton.layer.borderColor = pink.withAlphaComponent(0.40).cgColor
         qrButton.addTarget(self, action: #selector(qrTapped), for: .touchUpInside)
         header.addSubview(qrButton)
 
         NSLayoutConstraint.activate([
             logoLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 22),
-            logoLabel.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -20),
-            logoLabel.widthAnchor.constraint(equalToConstant: 52),
-            logoLabel.heightAnchor.constraint(equalToConstant: 52),
+            logoLabel.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -22),
+            logoLabel.widthAnchor.constraint(equalToConstant: 48),
+            logoLabel.heightAnchor.constraint(equalToConstant: 48),
 
             titleLabel.leadingAnchor.constraint(equalTo: logoLabel.trailingAnchor, constant: 12),
-            titleLabel.topAnchor.constraint(equalTo: logoLabel.topAnchor, constant: 1),
+            titleLabel.topAnchor.constraint(equalTo: logoLabel.topAnchor, constant: 2),
 
             connectionDot.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            connectionDot.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 7),
-            connectionDot.widthAnchor.constraint(equalToConstant: 10),
-            connectionDot.heightAnchor.constraint(equalToConstant: 10),
+            connectionDot.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            connectionDot.widthAnchor.constraint(equalToConstant: 8),
+            connectionDot.heightAnchor.constraint(equalToConstant: 8),
 
-            connectionLabel.leadingAnchor.constraint(equalTo: connectionDot.trailingAnchor, constant: 6),
+            connectionLabel.leadingAnchor.constraint(equalTo: connectionDot.trailingAnchor, constant: 7),
             connectionLabel.centerYAnchor.constraint(equalTo: connectionDot.centerYAnchor),
 
             qrButton.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -18),
             qrButton.centerYAnchor.constraint(equalTo: logoLabel.centerYAnchor),
-            qrButton.widthAnchor.constraint(equalToConstant: 72),
+            qrButton.widthAnchor.constraint(equalToConstant: 58),
             qrButton.heightAnchor.constraint(equalToConstant: 58)
         ])
     }
 
     private func setupDestinationCard() {
         destinationCard.translatesAutoresizingMaskIntoConstraints = false
-        destinationCard.backgroundColor = panel
-        destinationCard.layer.cornerRadius = 24
-        destinationCard.layer.borderWidth = 1
-        destinationCard.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        applyGlass(to: destinationCard, cornerRadius: 26)
         view.addSubview(destinationCard)
         NSLayoutConstraint.activate([
             destinationCard.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
@@ -261,20 +299,25 @@ final class ViewController: UIViewController {
         ])
 
         destinationTitle.translatesAutoresizingMaskIntoConstraints = false
-        destinationTitle.text = "ĐIỂM ĐẾN"
-        destinationTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        destinationTitle.textColor = UIColor.white.withAlphaComponent(0.72)
+        destinationTitle.attributedText = NSAttributedString(
+            string: "ĐIỂM ĐẾN",
+            attributes: [
+                .kern: 1.8,
+                .font: roundedFont(12, .semibold),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.62)
+            ]
+        )
         destinationCard.addSubview(destinationTitle)
 
         destinationStack.translatesAutoresizingMaskIntoConstraints = false
         destinationStack.axis = .vertical
-        destinationStack.spacing = 8
+        destinationStack.spacing = 10
         destinationCard.addSubview(destinationStack)
 
         addDestinationButton.translatesAutoresizingMaskIntoConstraints = false
         addDestinationButton.setTitle("＋  Thêm điểm đến", for: .normal)
         addDestinationButton.setTitleColor(pink, for: .normal)
-        addDestinationButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        addDestinationButton.titleLabel?.font = roundedFont(15, .semibold)
         addDestinationButton.contentHorizontalAlignment = .left
         addDestinationButton.addTarget(self, action: #selector(addDestTapped), for: .touchUpInside)
         destinationCard.addSubview(addDestinationButton)
@@ -299,15 +342,15 @@ final class ViewController: UIViewController {
             startButton.topAnchor.constraint(equalTo: addDestinationButton.bottomAnchor, constant: 8),
             startButton.leadingAnchor.constraint(equalTo: destinationCard.leadingAnchor, constant: 16),
             startButton.trailingAnchor.constraint(equalTo: destinationCard.trailingAnchor, constant: -16),
-            startButton.heightAnchor.constraint(equalToConstant: 58),
+            startButton.heightAnchor.constraint(equalToConstant: 60),
             startButton.bottomAnchor.constraint(equalTo: destinationCard.bottomAnchor, constant: -16)
         ])
 
         suggestionTable.translatesAutoresizingMaskIntoConstraints = false
         suggestionTable.isHidden = true
-        suggestionTable.backgroundColor = UIColor(red: 0.055, green: 0.07, blue: 0.11, alpha: 0.98)
+        suggestionTable.backgroundColor = UIColor(red: 0.05, green: 0.065, blue: 0.10, alpha: 0.98)
         suggestionTable.separatorColor = UIColor.white.withAlphaComponent(0.08)
-        suggestionTable.layer.cornerRadius = 16
+        suggestionTable.layer.cornerRadius = 18
         suggestionTable.clipsToBounds = true
         suggestionTable.dataSource = self
         suggestionTable.delegate = self
@@ -321,8 +364,8 @@ final class ViewController: UIViewController {
 
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.text = "Đang tìm HUD..."
-        statusLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        statusLabel.textColor = UIColor.white.withAlphaComponent(0.70)
+        statusLabel.font = .systemFont(ofSize: 11.5, weight: .medium)
+        statusLabel.textColor = UIColor.white.withAlphaComponent(0.65)
         statusLabel.numberOfLines = 2
         view.addSubview(statusLabel)
         NSLayoutConstraint.activate([
@@ -345,18 +388,18 @@ final class ViewController: UIViewController {
         }
 
         NSLayoutConstraint.activate([
-            layersButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            layersButton.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -262),
-            layersButton.widthAnchor.constraint(equalToConstant: 86),
-            layersButton.heightAnchor.constraint(equalToConstant: 72),
+            layersButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            layersButton.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -272),
+            layersButton.widthAnchor.constraint(equalToConstant: 88),
+            layersButton.heightAnchor.constraint(equalToConstant: 66),
 
             locationButton.leadingAnchor.constraint(equalTo: layersButton.leadingAnchor),
-            locationButton.topAnchor.constraint(equalTo: layersButton.bottomAnchor, constant: 8),
+            locationButton.topAnchor.constraint(equalTo: layersButton.bottomAnchor, constant: 10),
             locationButton.widthAnchor.constraint(equalTo: layersButton.widthAnchor),
             locationButton.heightAnchor.constraint(equalTo: layersButton.heightAnchor),
 
             headingButton.leadingAnchor.constraint(equalTo: layersButton.leadingAnchor),
-            headingButton.topAnchor.constraint(equalTo: locationButton.bottomAnchor, constant: 8),
+            headingButton.topAnchor.constraint(equalTo: locationButton.bottomAnchor, constant: 10),
             headingButton.widthAnchor.constraint(equalTo: layersButton.widthAnchor),
             headingButton.heightAnchor.constraint(equalTo: layersButton.heightAnchor)
         ])
@@ -376,56 +419,56 @@ final class ViewController: UIViewController {
         zoomStack.addArrangedSubview(zoomOutButton)
         NSLayoutConstraint.activate([
             zoomStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            zoomStack.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -160),
-            zoomStack.widthAnchor.constraint(equalToConstant: 54),
-            zoomStack.heightAnchor.constraint(equalToConstant: 108)
+            zoomStack.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -170),
+            zoomStack.widthAnchor.constraint(equalToConstant: 56),
+            zoomStack.heightAnchor.constraint(equalToConstant: 112)
         ])
     }
 
     private func setupNavigationCard() {
         navigationCard.translatesAutoresizingMaskIntoConstraints = false
         navigationCard.isHidden = true
-        navigationCard.backgroundColor = panel
-        navigationCard.layer.cornerRadius = 22
-        navigationCard.layer.borderWidth = 1
-        navigationCard.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        applyGlass(to: navigationCard, cornerRadius: 26)
         view.addSubview(navigationCard)
         NSLayoutConstraint.activate([
             navigationCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
             navigationCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            navigationCard.bottomAnchor.constraint(equalTo: summaryCard.topAnchor, constant: -8),
-            navigationCard.heightAnchor.constraint(equalToConstant: 108)
+            navigationCard.bottomAnchor.constraint(equalTo: summaryCard.topAnchor, constant: -10),
+            navigationCard.heightAnchor.constraint(equalToConstant: 118)
         ])
 
         navHandle.translatesAutoresizingMaskIntoConstraints = false
-        navHandle.backgroundColor = UIColor.white.withAlphaComponent(0.18)
-        navHandle.layer.cornerRadius = 3
+        navHandle.backgroundColor = UIColor.white.withAlphaComponent(0.22)
+        navHandle.layer.cornerRadius = 2.5
         navigationCard.addSubview(navHandle)
 
         navArrow.translatesAutoresizingMaskIntoConstraints = false
         navArrow.text = "↑"
-        navArrow.font = .systemFont(ofSize: 46, weight: .bold)
+        navArrow.font = roundedFont(38, .heavy)
         navArrow.textColor = pink
         navArrow.textAlignment = .center
+        navArrow.backgroundColor = pink.withAlphaComponent(0.14)
+        navArrow.layer.cornerRadius = 20
+        navArrow.clipsToBounds = true
         navigationCard.addSubview(navArrow)
 
         navDistance.translatesAutoresizingMaskIntoConstraints = false
         navDistance.text = "— m"
-        navDistance.font = .monospacedDigitSystemFont(ofSize: 28, weight: .bold)
+        navDistance.font = monoFont(32, .bold)
         navDistance.textColor = .white
         navDistance.textAlignment = .right
         navigationCard.addSubview(navDistance)
 
         navRoad.translatesAutoresizingMaskIntoConstraints = false
         navRoad.text = "Đang dẫn đường"
-        navRoad.font = .systemFont(ofSize: 14, weight: .semibold)
+        navRoad.font = roundedFont(15, .semibold)
         navRoad.textColor = .white
         navRoad.numberOfLines = 1
         navRoad.lineBreakMode = .byTruncatingTail
         navigationCard.addSubview(navRoad)
 
         navEta.translatesAutoresizingMaskIntoConstraints = false
-        navEta.font = .systemFont(ofSize: 11, weight: .medium)
+        navEta.font = .systemFont(ofSize: 11.5, weight: .medium)
         navEta.textColor = UIColor.white.withAlphaComponent(0.55)
         navigationCard.addSubview(navEta)
 
@@ -439,51 +482,48 @@ final class ViewController: UIViewController {
 
         NSLayoutConstraint.activate([
             navHandle.centerXAnchor.constraint(equalTo: navigationCard.centerXAnchor),
-            navHandle.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 8),
-            navHandle.widthAnchor.constraint(equalToConstant: 34),
+            navHandle.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 9),
+            navHandle.widthAnchor.constraint(equalToConstant: 36),
             navHandle.heightAnchor.constraint(equalToConstant: 5),
 
-            navArrow.leadingAnchor.constraint(equalTo: navigationCard.leadingAnchor, constant: 12),
-            navArrow.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 17),
-            navArrow.widthAnchor.constraint(equalToConstant: 58),
-            navArrow.heightAnchor.constraint(equalToConstant: 52),
+            navArrow.leadingAnchor.constraint(equalTo: navigationCard.leadingAnchor, constant: 14),
+            navArrow.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 20),
+            navArrow.widthAnchor.constraint(equalToConstant: 62),
+            navArrow.heightAnchor.constraint(equalToConstant: 62),
 
             navDistance.trailingAnchor.constraint(equalTo: navigationCard.trailingAnchor, constant: -18),
-            navDistance.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 22),
-            navDistance.widthAnchor.constraint(equalToConstant: 125),
-            navDistance.heightAnchor.constraint(equalToConstant: 40),
+            navDistance.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 24),
+            navDistance.widthAnchor.constraint(equalToConstant: 128),
+            navDistance.heightAnchor.constraint(equalToConstant: 42),
 
-            navRoad.leadingAnchor.constraint(equalTo: navArrow.trailingAnchor, constant: 5),
+            navRoad.leadingAnchor.constraint(equalTo: navArrow.trailingAnchor, constant: 12),
             navRoad.trailingAnchor.constraint(equalTo: navDistance.leadingAnchor, constant: -10),
-            navRoad.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 27),
+            navRoad.topAnchor.constraint(equalTo: navigationCard.topAnchor, constant: 30),
 
             navEta.leadingAnchor.constraint(equalTo: navRoad.leadingAnchor),
             navEta.trailingAnchor.constraint(equalTo: navRoad.trailingAnchor),
-            navEta.topAnchor.constraint(equalTo: navRoad.bottomAnchor, constant: 3),
+            navEta.topAnchor.constraint(equalTo: navRoad.bottomAnchor, constant: 5),
 
             progressView.leadingAnchor.constraint(equalTo: navigationCard.leadingAnchor, constant: 18),
             progressView.trailingAnchor.constraint(equalTo: navigationCard.trailingAnchor, constant: -18),
-            progressView.bottomAnchor.constraint(equalTo: navigationCard.bottomAnchor, constant: -12),
+            progressView.bottomAnchor.constraint(equalTo: navigationCard.bottomAnchor, constant: -14),
 
             stopButton.trailingAnchor.constraint(equalTo: navigationCard.trailingAnchor, constant: -14),
-            stopButton.bottomAnchor.constraint(equalTo: navigationCard.bottomAnchor, constant: -27),
-            stopButton.widthAnchor.constraint(equalToConstant: 92),
-            stopButton.heightAnchor.constraint(equalToConstant: 34)
+            stopButton.bottomAnchor.constraint(equalTo: navigationCard.bottomAnchor, constant: -30),
+            stopButton.widthAnchor.constraint(equalToConstant: 96),
+            stopButton.heightAnchor.constraint(equalToConstant: 36)
         ])
     }
 
     private func setupSummaryCard() {
         summaryCard.translatesAutoresizingMaskIntoConstraints = false
-        summaryCard.backgroundColor = panel
-        summaryCard.layer.cornerRadius = 24
-        summaryCard.layer.borderWidth = 1
-        summaryCard.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        applyGlass(to: summaryCard, cornerRadius: 26)
         view.addSubview(summaryCard)
         NSLayoutConstraint.activate([
             summaryCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             summaryCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            summaryCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
-            summaryCard.heightAnchor.constraint(equalToConstant: 94)
+            summaryCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -16),
+            summaryCard.heightAnchor.constraint(equalToConstant: 98)
         ])
 
         let columns = [
@@ -495,41 +535,51 @@ final class ViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.distribution = .fillEqually
-        stack.spacing = 8
+        stack.spacing = 10
         summaryCard.addSubview(stack)
 
         for (value, caption, symbol, text) in columns {
             let card = UIView()
-            card.backgroundColor = UIColor.white.withAlphaComponent(0.025)
-            card.layer.cornerRadius = 16
+            card.backgroundColor = UIColor.white.withAlphaComponent(0.03)
+            card.layer.cornerRadius = 18
             card.layer.borderWidth = 1
             card.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
             stack.addArrangedSubview(card)
+
+            let bubble = UIView()
+            bubble.translatesAutoresizingMaskIntoConstraints = false
+            bubble.backgroundColor = pink.withAlphaComponent(0.16)
+            bubble.layer.cornerRadius = 11
+            card.addSubview(bubble)
 
             let icon = UIImageView(image: UIImage(systemName: symbol))
             icon.translatesAutoresizingMaskIntoConstraints = false
             icon.tintColor = pink
             icon.contentMode = .scaleAspectFit
-            card.addSubview(icon)
+            bubble.addSubview(icon)
 
             value.translatesAutoresizingMaskIntoConstraints = false
             value.text = "—"
-            value.font = .systemFont(ofSize: 16, weight: .bold)
+            value.font = roundedFont(17, .bold)
             value.textColor = .white
             card.addSubview(value)
 
             caption.translatesAutoresizingMaskIntoConstraints = false
             caption.text = text
-            caption.font = .systemFont(ofSize: 9, weight: .medium)
-            caption.textColor = UIColor.white.withAlphaComponent(0.58)
+            caption.font = .systemFont(ofSize: 10, weight: .medium)
+            caption.textColor = UIColor.white.withAlphaComponent(0.55)
             card.addSubview(caption)
 
             NSLayoutConstraint.activate([
-                icon.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
-                icon.centerYAnchor.constraint(equalTo: card.centerYAnchor),
-                icon.widthAnchor.constraint(equalToConstant: 25),
-                icon.heightAnchor.constraint(equalToConstant: 25),
-                caption.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+                bubble.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
+                bubble.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+                bubble.widthAnchor.constraint(equalToConstant: 32),
+                bubble.heightAnchor.constraint(equalToConstant: 32),
+                icon.centerXAnchor.constraint(equalTo: bubble.centerXAnchor),
+                icon.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 17),
+                icon.heightAnchor.constraint(equalToConstant: 17),
+                caption.leadingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: 9),
                 caption.topAnchor.constraint(equalTo: card.topAnchor, constant: 17),
                 caption.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -6),
                 value.leadingAnchor.constraint(equalTo: caption.leadingAnchor),
@@ -548,15 +598,20 @@ final class ViewController: UIViewController {
 
     private func setupBottomBar() {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.backgroundColor = UIColor(red: 0.035, green: 0.05, blue: 0.08, alpha: 0.98)
+        bottomBar.backgroundColor = UIColor(red: 0.045, green: 0.06, blue: 0.095, alpha: 0.95)
+        bottomBar.layer.cornerRadius = 28
         bottomBar.layer.borderWidth = 1
-        bottomBar.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
+        bottomBar.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        bottomBar.layer.shadowColor = UIColor.black.cgColor
+        bottomBar.layer.shadowOpacity = 0.5
+        bottomBar.layer.shadowRadius = 24
+        bottomBar.layer.shadowOffset = CGSize(width: 0, height: 10)
         view.addSubview(bottomBar)
         NSLayoutConstraint.activate([
-            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 88)
+            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -14),
+            bottomBar.heightAnchor.constraint(equalToConstant: 78)
         ])
 
         setupTab(mapTabButton, icon: mapTabIcon, label: mapTabLabel, title: "Bản đồ", symbol: "map.fill", action: #selector(mapTabTapped))
@@ -564,13 +619,13 @@ final class ViewController: UIViewController {
 
         let divider = UIView()
         divider.translatesAutoresizingMaskIntoConstraints = false
-        divider.backgroundColor = UIColor.white.withAlphaComponent(0.12)
+        divider.backgroundColor = UIColor.white.withAlphaComponent(0.10)
         bottomBar.addSubview(divider)
 
         NSLayoutConstraint.activate([
             mapTabButton.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             mapTabButton.topAnchor.constraint(equalTo: bottomBar.topAnchor, constant: 8),
-            mapTabButton.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor, constant: -10),
+            mapTabButton.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor, constant: -8),
             mapTabButton.widthAnchor.constraint(equalTo: bottomBar.widthAnchor, multiplier: 0.5, constant: -18),
 
             ordersTabButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
@@ -581,7 +636,7 @@ final class ViewController: UIViewController {
             divider.centerXAnchor.constraint(equalTo: bottomBar.centerXAnchor),
             divider.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
-            divider.heightAnchor.constraint(equalToConstant: 50)
+            divider.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
 
@@ -597,7 +652,7 @@ final class ViewController: UIViewController {
 
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = title
-        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.font = roundedFont(12, .semibold)
         button.addSubview(label)
 
         NSLayoutConstraint.activate([
@@ -613,29 +668,26 @@ final class ViewController: UIViewController {
     private func setupOrdersPanel() {
         ordersPanel.translatesAutoresizingMaskIntoConstraints = false
         ordersPanel.isHidden = true
-        ordersPanel.backgroundColor = panel
-        ordersPanel.layer.cornerRadius = 24
-        ordersPanel.layer.borderWidth = 1
-        ordersPanel.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        applyGlass(to: ordersPanel, cornerRadius: 28)
         view.addSubview(ordersPanel)
         NSLayoutConstraint.activate([
             ordersPanel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             ordersPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             ordersPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            ordersPanel.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -12)
+            ordersPanel.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -18)
         ])
 
         let title = UILabel()
         title.translatesAutoresizingMaskIntoConstraints = false
-        title.text = "ĐƠN HÀNG / LỊCH SỬ CHUYẾN"
-        title.font = .systemFont(ofSize: 18, weight: .bold)
+        title.text = "Đơn hàng & lịch sử"
+        title.font = roundedFont(20, .bold)
         title.textColor = .white
         ordersPanel.addSubview(title)
 
         let subtitle = UILabel()
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         subtitle.text = "Lưu các quãng đường đã hoàn thành — phần sản phẩm, số lượng và tiền sẽ phát triển sau."
-        subtitle.font = .systemFont(ofSize: 12, weight: .medium)
+        subtitle.font = .systemFont(ofSize: 12.5, weight: .medium)
         subtitle.textColor = UIColor.white.withAlphaComponent(0.55)
         subtitle.numberOfLines = 2
         ordersPanel.addSubview(subtitle)
@@ -643,7 +695,7 @@ final class ViewController: UIViewController {
         ordersScroll.translatesAutoresizingMaskIntoConstraints = false
         ordersPanel.addSubview(ordersScroll)
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: ordersPanel.topAnchor, constant: 22),
+            title.topAnchor.constraint(equalTo: ordersPanel.topAnchor, constant: 24),
             title.leadingAnchor.constraint(equalTo: ordersPanel.leadingAnchor, constant: 20),
             title.trailingAnchor.constraint(equalTo: ordersPanel.trailingAnchor, constant: -20),
 
@@ -673,7 +725,7 @@ final class ViewController: UIViewController {
     private func setupArrivalOverlay() {
         arriveOverlay.translatesAutoresizingMaskIntoConstraints = false
         arriveOverlay.isHidden = true
-        arriveOverlay.backgroundColor = UIColor.black.withAlphaComponent(0.96)
+        arriveOverlay.backgroundColor = UIColor(red: 0.035, green: 0.045, blue: 0.08, alpha: 0.98)
         view.addSubview(arriveOverlay)
         NSLayoutConstraint.activate([
             arriveOverlay.topAnchor.constraint(equalTo: view.topAnchor),
@@ -682,8 +734,18 @@ final class ViewController: UIViewController {
             arriveOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
+        arriveCheckIcon.translatesAutoresizingMaskIntoConstraints = false
+        arriveCheckIcon.image = UIImage(systemName: "checkmark.circle.fill")
+        arriveCheckIcon.tintColor = .systemGreen
+        arriveCheckIcon.contentMode = .scaleAspectFit
+        arriveCheckIcon.layer.shadowColor = UIColor.systemGreen.cgColor
+        arriveCheckIcon.layer.shadowOpacity = 0.55
+        arriveCheckIcon.layer.shadowRadius = 18
+        arriveCheckIcon.layer.shadowOffset = .zero
+        arriveOverlay.addSubview(arriveCheckIcon)
+
         arriveTitle.translatesAutoresizingMaskIntoConstraints = false
-        arriveTitle.font = .systemFont(ofSize: 28, weight: .bold)
+        arriveTitle.font = roundedFont(26, .bold)
         arriveTitle.textColor = .white
         arriveTitle.textAlignment = .center
         arriveOverlay.addSubview(arriveTitle)
@@ -698,22 +760,36 @@ final class ViewController: UIViewController {
         qrImageView.translatesAutoresizingMaskIntoConstraints = false
         qrImageView.contentMode = .scaleAspectFit
         qrImageView.backgroundColor = .white
-        qrImageView.layer.cornerRadius = 18
+        qrImageView.layer.cornerRadius = 24
         qrImageView.clipsToBounds = true
         arriveOverlay.addSubview(qrImageView)
 
-        let closeButton = UIButton(type: .system)
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setTitle("ĐÓNG", for: .normal)
-        closeButton.setTitleColor(.white, for: .normal)
-        closeButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
-        closeButton.backgroundColor = pink
-        closeButton.layer.cornerRadius = 15
-        closeButton.addTarget(self, action: #selector(closeArriveOverlay), for: .touchUpInside)
-        arriveOverlay.addSubview(closeButton)
+        arriveCloseButton.translatesAutoresizingMaskIntoConstraints = false
+        arriveCloseButton.setTitle("HOÀN TẤT", for: .normal)
+        arriveCloseButton.setTitleColor(.white, for: .normal)
+        arriveCloseButton.titleLabel?.font = roundedFont(16, .bold)
+        arriveCloseButton.layer.cornerRadius = 26
+        let closeGradient = CAGradientLayer()
+        closeGradient.name = "closeGradient"
+        closeGradient.cornerRadius = 26
+        closeGradient.colors = [pink.cgColor, purple.cgColor]
+        closeGradient.startPoint = CGPoint(x: 0, y: 0.5)
+        closeGradient.endPoint = CGPoint(x: 1, y: 0.5)
+        arriveCloseButton.layer.insertSublayer(closeGradient, at: 0)
+        arriveCloseButton.layer.shadowColor = pink.cgColor
+        arriveCloseButton.layer.shadowOpacity = 0.4
+        arriveCloseButton.layer.shadowRadius = 14
+        arriveCloseButton.layer.shadowOffset = CGSize(width: 0, height: 6)
+        arriveCloseButton.addTarget(self, action: #selector(closeArriveOverlay), for: .touchUpInside)
+        arriveOverlay.addSubview(arriveCloseButton)
 
         NSLayoutConstraint.activate([
-            arriveTitle.topAnchor.constraint(equalTo: arriveOverlay.safeAreaLayoutGuide.topAnchor, constant: 60),
+            arriveCheckIcon.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
+            arriveCheckIcon.topAnchor.constraint(equalTo: arriveOverlay.safeAreaLayoutGuide.topAnchor, constant: 52),
+            arriveCheckIcon.widthAnchor.constraint(equalToConstant: 88),
+            arriveCheckIcon.heightAnchor.constraint(equalToConstant: 88),
+
+            arriveTitle.topAnchor.constraint(equalTo: arriveCheckIcon.bottomAnchor, constant: 16),
             arriveTitle.leadingAnchor.constraint(equalTo: arriveOverlay.leadingAnchor, constant: 20),
             arriveTitle.trailingAnchor.constraint(equalTo: arriveOverlay.trailingAnchor, constant: -20),
 
@@ -722,43 +798,53 @@ final class ViewController: UIViewController {
             arriveSubtitle.trailingAnchor.constraint(equalTo: arriveOverlay.trailingAnchor, constant: -28),
 
             qrImageView.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
-            qrImageView.topAnchor.constraint(equalTo: arriveSubtitle.bottomAnchor, constant: 24),
-            qrImageView.widthAnchor.constraint(equalToConstant: 250),
-            qrImageView.heightAnchor.constraint(equalToConstant: 250),
+            qrImageView.topAnchor.constraint(equalTo: arriveSubtitle.bottomAnchor, constant: 26),
+            qrImageView.widthAnchor.constraint(equalToConstant: 230),
+            qrImageView.heightAnchor.constraint(equalToConstant: 230),
 
-            closeButton.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
-            closeButton.topAnchor.constraint(equalTo: qrImageView.bottomAnchor, constant: 24),
-            closeButton.widthAnchor.constraint(equalToConstant: 150),
-            closeButton.heightAnchor.constraint(equalToConstant: 48)
+            arriveCloseButton.centerXAnchor.constraint(equalTo: arriveOverlay.centerXAnchor),
+            arriveCloseButton.topAnchor.constraint(equalTo: qrImageView.bottomAnchor, constant: 26),
+            arriveCloseButton.widthAnchor.constraint(equalToConstant: 180),
+            arriveCloseButton.heightAnchor.constraint(equalToConstant: 52)
         ])
     }
 
     // MARK: - Styling helpers
 
-    private func styleIconButton(_ button: UIButton, systemName: String, title: String, filled: Bool) {
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.tintColor = .white
-        button.setImage(UIImage(systemName: systemName), for: .normal)
-        button.setTitle("  \(title)", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = filled ? UIColor(red: 0.45, green: 0.08, blue: 0.34, alpha: 0.92) : softPanel
-        button.layer.cornerRadius = 16
-        button.layer.borderWidth = 1
-        button.layer.borderColor = pink.withAlphaComponent(0.45).cgColor
+    private func roundedFont(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        if let descriptor = base.fontDescriptor.withDesign(.rounded) {
+            return UIFont(descriptor: descriptor, size: size)
+        }
+        return base
+    }
+
+    private func monoFont(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
+        .monospacedDigitSystemFont(ofSize: size, weight: weight)
+    }
+
+    private func applyGlass(to view: UIView, cornerRadius: CGFloat) {
+        view.backgroundColor = panel
+        view.layer.cornerRadius = cornerRadius
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.45
+        view.layer.shadowRadius = 22
+        view.layer.shadowOffset = CGSize(width: 0, height: 10)
     }
 
     private func stylePlainIconButton(_ button: UIButton, systemName: String) {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setImage(UIImage(systemName: systemName), for: .normal)
         button.tintColor = .white
-        button.backgroundColor = UIColor.clear
+        button.backgroundColor = .clear
     }
 
     private func styleMapControl(_ button: UIButton, systemName: String, title: String) {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.backgroundColor = softPanel
-        button.layer.cornerRadius = 17
+        button.layer.cornerRadius = 20
         button.layer.borderWidth = 1
         button.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
         button.tintColor = .white
@@ -776,24 +862,32 @@ final class ViewController: UIViewController {
         button.setImage(UIImage(systemName: symbol), for: .normal)
         button.tintColor = .white
         button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        button.layer.cornerRadius = 18
-        button.clipsToBounds = true
+        button.titleLabel?.font = roundedFont(17, .bold)
+        button.layer.cornerRadius = 20
         let gradient = CAGradientLayer()
         gradient.name = "startGradient"
+        gradient.cornerRadius = 20
         gradient.colors = [pink.cgColor, purple.cgColor]
         gradient.startPoint = CGPoint(x: 0, y: 0.5)
         gradient.endPoint = CGPoint(x: 1, y: 0.5)
         button.layer.insertSublayer(gradient, at: 0)
+        button.layer.shadowColor = pink.cgColor
+        button.layer.shadowOpacity = 0.4
+        button.layer.shadowRadius = 14
+        button.layer.shadowOffset = CGSize(width: 0, height: 6)
     }
 
     private func styleStopButton() {
         stopButton.translatesAutoresizingMaskIntoConstraints = false
-        stopButton.setTitle("■  STOP", for: .normal)
+        stopButton.setTitle("■  DỪNG", for: .normal)
         stopButton.setTitleColor(.white, for: .normal)
-        stopButton.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
-        stopButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.88)
-        stopButton.layer.cornerRadius = 17
+        stopButton.titleLabel?.font = roundedFont(12, .bold)
+        stopButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.9)
+        stopButton.layer.cornerRadius = 18
+        stopButton.layer.shadowColor = UIColor.systemRed.cgColor
+        stopButton.layer.shadowOpacity = 0.35
+        stopButton.layer.shadowRadius = 8
+        stopButton.layer.shadowOffset = CGSize(width: 0, height: 4)
         stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
     }
 
@@ -802,20 +896,20 @@ final class ViewController: UIViewController {
     private func makeDestinationRow() -> UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
-        row.backgroundColor = UIColor(red: 0.09, green: 0.11, blue: 0.17, alpha: 1)
-        row.layer.cornerRadius = 15
+        row.backgroundColor = rowSurface
+        row.layer.cornerRadius = 18
         row.layer.borderWidth = 1
         row.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
-        row.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        row.heightAnchor.constraint(equalToConstant: 56).isActive = true
 
         let index = UILabel()
         index.translatesAutoresizingMaskIntoConstraints = false
         index.text = "\(destinationFields.count + 1)"
         index.textAlignment = .center
-        index.font = .systemFont(ofSize: 14, weight: .bold)
+        index.font = roundedFont(13, .bold)
         index.textColor = .white
         index.backgroundColor = pink
-        index.layer.cornerRadius = 13
+        index.layer.cornerRadius = 10
         index.clipsToBounds = true
         row.addSubview(index)
 
@@ -828,8 +922,8 @@ final class ViewController: UIViewController {
         let field = UITextField()
         field.translatesAutoresizingMaskIntoConstraints = false
         field.textColor = .white
-        field.font = .systemFont(ofSize: 15, weight: .medium)
-        field.attributedPlaceholder = NSAttributedString(string: "Nhập điểm đến...", attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.42)])
+        field.font = roundedFont(15, .medium)
+        field.attributedPlaceholder = NSAttributedString(string: "Nhập điểm đến...", attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.40)])
         field.returnKeyType = .go
         field.delegate = self
         field.addTarget(self, action: #selector(textChanged(_:)), for: .editingChanged)
@@ -838,30 +932,30 @@ final class ViewController: UIViewController {
         let remove = UIButton(type: .system)
         remove.translatesAutoresizingMaskIntoConstraints = false
         remove.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        remove.tintColor = UIColor.white.withAlphaComponent(0.42)
+        remove.tintColor = UIColor.white.withAlphaComponent(0.40)
         remove.addTarget(self, action: #selector(removeDestTapped(_:)), for: .touchUpInside)
         remove.tag = destinationFields.count
         row.addSubview(remove)
 
         NSLayoutConstraint.activate([
-            index.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
+            index.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
             index.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            index.widthAnchor.constraint(equalToConstant: 28),
-            index.heightAnchor.constraint(equalToConstant: 28),
+            index.widthAnchor.constraint(equalToConstant: 30),
+            index.heightAnchor.constraint(equalToConstant: 30),
 
             pin.leadingAnchor.constraint(equalTo: index.trailingAnchor, constant: 10),
             pin.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            pin.widthAnchor.constraint(equalToConstant: 18),
-            pin.heightAnchor.constraint(equalToConstant: 22),
+            pin.widthAnchor.constraint(equalToConstant: 16),
+            pin.heightAnchor.constraint(equalToConstant: 20),
 
             field.leadingAnchor.constraint(equalTo: pin.trailingAnchor, constant: 8),
             field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             field.trailingAnchor.constraint(equalTo: remove.leadingAnchor, constant: -8),
 
-            remove.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
+            remove.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
             remove.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            remove.widthAnchor.constraint(equalToConstant: 26),
-            remove.heightAnchor.constraint(equalToConstant: 26)
+            remove.widthAnchor.constraint(equalToConstant: 24),
+            remove.heightAnchor.constraint(equalToConstant: 24)
         ])
 
         destinationFields.append(field)
@@ -1393,6 +1487,9 @@ final class ViewController: UIViewController {
         ordersTabIcon.tintColor = showingOrders ? active : UIColor.white.withAlphaComponent(0.45)
         ordersTabLabel.textColor = showingOrders ? active : UIColor.white.withAlphaComponent(0.55)
 
+        mapTabIcon.image = UIImage(systemName: showingOrders ? "map" : "map.fill")
+        ordersTabIcon.image = UIImage(systemName: showingOrders ? "list.clipboard.fill" : "list.clipboard")
+
         destinationCard.isHidden = showingOrders || isNavigating
         statusLabel.isHidden = showingOrders || isNavigating
         suggestionTable.isHidden = true
@@ -1414,7 +1511,7 @@ final class ViewController: UIViewController {
         if trips.isEmpty {
             let empty = UILabel()
             empty.text = "Chưa có chuyến hoàn thành.\nKhi một điểm đến hoàn tất, quãng đường sẽ được lưu tại đây."
-            empty.font = .systemFont(ofSize: 15, weight: .medium)
+            empty.font = roundedFont(15, .medium)
             empty.textColor = UIColor.white.withAlphaComponent(0.55)
             empty.textAlignment = .center
             empty.numberOfLines = 3
@@ -1428,20 +1525,27 @@ final class ViewController: UIViewController {
         for trip in trips {
             let card = UIView()
             card.backgroundColor = UIColor.white.withAlphaComponent(0.035)
-            card.layer.cornerRadius = 18
+            card.layer.cornerRadius = 20
             card.layer.borderWidth = 1
             card.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
-            card.heightAnchor.constraint(equalToConstant: 86).isActive = true
+            card.heightAnchor.constraint(equalToConstant: 88).isActive = true
 
-            let icon = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+            let bubble = UIView()
+            bubble.translatesAutoresizingMaskIntoConstraints = false
+            bubble.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.15)
+            bubble.layer.cornerRadius = 13
+            card.addSubview(bubble)
+
+            let icon = UIImageView(image: UIImage(systemName: "checkmark"))
             icon.translatesAutoresizingMaskIntoConstraints = false
             icon.tintColor = .systemGreen
-            card.addSubview(icon)
+            icon.contentMode = .scaleAspectFit
+            bubble.addSubview(icon)
 
             let destination = UILabel()
             destination.translatesAutoresizingMaskIntoConstraints = false
             destination.text = "Điểm \(trip.stopNumber) · \(trip.destination)"
-            destination.font = .systemFont(ofSize: 14, weight: .bold)
+            destination.font = roundedFont(14, .bold)
             destination.textColor = .white
             destination.numberOfLines = 1
             destination.lineBreakMode = .byTruncatingTail
@@ -1456,11 +1560,15 @@ final class ViewController: UIViewController {
             card.addSubview(meta)
 
             NSLayoutConstraint.activate([
-                icon.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 14),
-                icon.topAnchor.constraint(equalTo: card.topAnchor, constant: 17),
-                icon.widthAnchor.constraint(equalToConstant: 25),
-                icon.heightAnchor.constraint(equalToConstant: 25),
-                destination.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
+                bubble.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 14),
+                bubble.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
+                bubble.widthAnchor.constraint(equalToConstant: 34),
+                bubble.heightAnchor.constraint(equalToConstant: 34),
+                icon.centerXAnchor.constraint(equalTo: bubble.centerXAnchor),
+                icon.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 17),
+                icon.heightAnchor.constraint(equalToConstant: 17),
+                destination.leadingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: 12),
                 destination.topAnchor.constraint(equalTo: card.topAnchor, constant: 13),
                 destination.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
                 meta.leadingAnchor.constraint(equalTo: destination.leadingAnchor),
