@@ -155,8 +155,12 @@ final class ViewController: UIViewController {
         // because the map controls are constrained relative to bottomBar.topAnchor.
         setupBottomBar()
         setupMapControls()
-        setupNavigationCard()
+        // QUAN TRỌNG: setupSummaryCard() phải chạy TRƯỚC setupNavigationCard()
+        // vì navigationCard có constraint tới summaryCard.topAnchor —
+        // nếu summaryCard chưa addSubview, activate constraint sẽ crash
+        // (NSLayoutAnchor _nearestAncestorLayoutItem / SIGABRT)
         setupSummaryCard()
+        setupNavigationCard()
         setupOrdersPanel()
         setupArrivalOverlay()
     }
