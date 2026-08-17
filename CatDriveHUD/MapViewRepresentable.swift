@@ -15,7 +15,7 @@ struct DriveMapView: UIViewRepresentable {
         map.isRotateEnabled = true
         map.isPitchEnabled = true
         map.showsCompass = false
-        map.overrideUserInterfaceStyle = .light
+        map.overrideUserInterfaceStyle = model.isNavigating ? .dark : .light
         map.mapType = model.mapType
         mapView = map
         return map
@@ -23,6 +23,7 @@ struct DriveMapView: UIViewRepresentable {
 
     func updateUIView(_ map: MKMapView, context: Context) {
         map.mapType = model.mapType
+        map.overrideUserInterfaceStyle = model.isNavigating ? .dark : .light
 
         if context.coordinator.lastCenterRequest != model.centerRequest {
             context.coordinator.lastCenterRequest = model.centerRequest
@@ -53,7 +54,7 @@ struct DriveMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let poly = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: poly)
-            renderer.strokeColor = UIColor(red: 0.39, green: 0.34, blue: 0.92, alpha: 1)
+            renderer.strokeColor = parent.model.isNavigating ? UIColor(red: 0.94, green: 0.20, blue: 0.47, alpha: 1) : UIColor(red: 0.39, green: 0.34, blue: 0.92, alpha: 1)
             renderer.lineWidth = 6
             renderer.lineCap = .round
             renderer.lineJoin = .round

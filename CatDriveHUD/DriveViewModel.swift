@@ -171,6 +171,24 @@ final class DriveViewModel: NSObject, ObservableObject {
         resolveCoordinatesThenStart(at: idx)
     }
 
+    func startNewTrip() {
+        isNavigating = false
+        isCalculating = false
+        routeSteps = []
+        routeCoordinates = []
+        currentStepIndex = 0
+        currentStopIndex = 0
+        showArrival = false
+        lastCompletedStopNumber = 0
+        stops = [DriveStop(address: "")]
+        activeStopID = nil
+        suggestions = []
+        followUser = true
+        centerRequest &+= 1
+        sendIdleToHUD()
+        statusText = "Sẵn sàng cho chuyến mới"
+    }
+
     func stopNavigation() {
         isNavigating = false
         isCalculating = false
