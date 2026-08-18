@@ -63,8 +63,8 @@ final class DriveViewModel: NSObject, ObservableObject {
     @Published var currentStopIndex = 0
     @Published var isNavigating = false
     @Published var isCalculating = false
-    @Published var statusText = "Sẵn sàng cho chuyến mới"
-    @Published var connectionText = "Đang tìm HUD"
+    @Published var statusText = "Ready for a new trip"
+    @Published var connectionText = "HUD not connected"
     @Published var hudConnected = false
     @Published var suggestions: [MKLocalSearchCompletion] = []
     @Published var activeStopID: UUID?

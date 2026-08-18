@@ -49,96 +49,82 @@ private struct IdleMapOverlay: View {
         return "\(max(0, Int(speed * 3.6)))"
     }
 
+    private var connectionLabel: String {
+        model.hudConnected ? "HUD Connected" : "HUD Not Connected"
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("HOHI DRIVE")
-                        .font(.hohi(19, weight: .black))
-                        .tracking(0.5)
-                        .foregroundStyle(HOHITheme.ink)
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(model.hudConnected ? HOHITheme.purple : HOHITheme.pink)
-                            .frame(width: 7, height: 7)
-                        Text(model.hudConnected ? "Connected" : "Connecting")
-                            .font(.hohi(11, weight: .semibold))
+        ZStack {
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("HOHI DRIVE")
+                            .font(.hohi(19, weight: .heavy))
+                            .tracking(0.4)
+                            .foregroundStyle(HOHITheme.ink)
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(model.hudConnected ? HOHITheme.purple : HOHITheme.pink)
+                                .frame(width: 7, height: 7)
+                            Text(connectionLabel)
+                                .font(.hohi(11.5, weight: .semibold))
+                                .foregroundStyle(model.hudConnected ? HOHITheme.purple : HOHITheme.muted)
+                        }
+                    }
+
+                    Spacer()
+
+                    VStack(spacing: 0) {
+                        Text(speedText)
+                            .font(.hohi(28, weight: .heavy))
+                            .foregroundStyle(HOHITheme.ink)
+                        Text("km/h")
+                            .font(.hohi(10, weight: .semibold))
                             .foregroundStyle(HOHITheme.muted)
                     }
+                    .frame(width: 76, height: 76)
+                    .background(.white.opacity(0.88))
+                    .clipShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
+                    .shadow(color: .black.opacity(0.10), radius: 14, y: 6)
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 52)
 
                 Spacer()
-
-                VStack(spacing: 0) {
-                    Text(speedText)
-                        .font(.hohi(28, weight: .black))
-                        .foregroundStyle(HOHITheme.ink)
-                    Text("km/h")
-                        .font(.hohi(10, weight: .semibold))
-                        .foregroundStyle(HOHITheme.muted)
-                }
-                .frame(width: 76, height: 76)
-                .background(.white.opacity(0.88))
-                .clipShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
-                .shadow(color: .black.opacity(0.10), radius: 14, y: 6)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 52)
 
-            Spacer()
-        }
-
-        VStack {
-            Spacer()
-            HStack(alignment: .bottom) {
-                Spacer()
-
-                VStack(spacing: 10) {
-                    IdleCompassButton(model: model)
-                    LightZoomControls(model: model, mapView: mapView)
-                    LightExtraControls(model: model, showMapOptions: $showMapOptions)
-                }
-            }
-            .padding(.trailing, 18)
-            .padding(.bottom, 150)
-        }
-
-        VStack {
-            Spacer()
-            Button {
-                model.centerOnUser()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "location.north.fill")
-                    Text("Re-center")
-                }
-                .font(.hohi(12.5, weight: .bold))
-                .foregroundStyle(HOHITheme.purple)
-                .padding(.horizontal, 16)
-                .frame(height: 42)
-                .background(.white.opacity(0.92))
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.11), radius: 12, y: 5)
-            }
-            .buttonStyle(.plain)
-            .padding(.bottom, 92)
-        }
-
-        if model.isCalculating {
             VStack {
                 Spacer()
-                HStack(spacing: 9) {
-                    ProgressView()
-                    Text("Building route…")
-                        .font(.hohi(12.5, weight: .semibold))
-                        .foregroundStyle(HOHITheme.ink)
+                HStack(alignment: .bottom) {
+                    Spacer()
+
+                    VStack(spacing: 10) {
+                        IdleCompassButton(model: model)
+                        LightZoomControls(model: model, mapView: mapView)
+                        RecenterButton(action: model.centerOnUser, dark: false)
+                        LightExtraControls(model: model, showMapOptions: $showMapOptions)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 46)
-                .background(.white.opacity(0.93))
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.11), radius: 12, y: 5)
-                .padding(.bottom, 142)
+                .padding(.trailing, 18)
+                .padding(.bottom, 116)
+            }
+
+            if model.isCalculating {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 9) {
+                        ProgressView()
+                        Text("Building route…")
+                            .font(.hohi(12.5, weight: .semibold))
+                            .foregroundStyle(HOHITheme.ink)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 46)
+                    .background(.white.opacity(0.93))
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.11), radius: 12, y: 5)
+                    .padding(.bottom, 142)
+                }
             }
         }
     }
@@ -175,13 +161,16 @@ private struct LightZoomControls: View {
     var body: some View {
         VStack(spacing: 0) {
             Button { model.zoomMap(0.62, mapView: mapView) } label: {
-                Image(systemName: "plus").frame(width: 52, height: 46)
+                Image(systemName: "plus")
+                    .frame(width: 52, height: 46)
             }
             Divider().opacity(0.35)
             Button { model.zoomMap(1.62, mapView: mapView) } label: {
-                Image(systemName: "minus").frame(width: 52, height: 46)
+                Image(systemName: "minus")
+                    .frame(width: 52, height: 46)
             }
         }
+        .frame(width: 52)
         .font(.hohi(18, weight: .bold))
         .foregroundStyle(HOHITheme.ink)
         .background(.white.opacity(0.92))
@@ -214,5 +203,23 @@ private struct LightExtraControls: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+}
+
+private struct RecenterButton: View {
+    let action: () -> Void
+    let dark: Bool
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "location.north.line.fill")
+                .font(.hohi(15, weight: .bold))
+                .foregroundStyle(dark ? Color.white : HOHITheme.purple)
+                .frame(width: 52, height: 52)
+                .background((dark ? HOHITheme.navCard.opacity(0.95) : Color.white.opacity(0.92)))
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(dark ? 0.30 : 0.10), radius: 12, y: 5)
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -1,10 +1,9 @@
 import Foundation
 import CoreBluetooth
 
-/// Quản lý kết nối BLE tới ESP32 HUD + auto-reconnect khi mất tín hiệu
-class BLEManager: NSObject {
-    static let serviceUUID = CBUUID(string: "DD3F0AD1-6239-4E1F-81F1-91F6C9F01D86")
-    static let writeUUID = CBUUID(string: "DD3F0AD3-6239-4E1F-81F1-91F6C9F01D86")
+final class BLEManager: NSObject {
+    static let serviceUUID = CBUUID(string: "4FAFC201-1FB5-459E-8FCC-C5C9C331914B")
+    static let writeUUID   = CBUUID(string: "BEB5483E-36E1-4688-B7F5-EA07361B26A8")
 
     var onStatusChange: ((String) -> Void)?
     var onConnectedChange: ((Bool) -> Void)?
@@ -22,7 +21,10 @@ class BLEManager: NSObject {
     func startScan() {
         guard central.state == .poweredOn, !isScanning else { return }
         isScanning = true
-        // Scan theo đúng service UUID của HUD — nhanh + không bắt nhầm thiết bị khác
+        writeCharacteristic = nil
+        peripheral = nil
+        onConnectedChange?(false)
+        onStatusChange?("Đang tìm HUD…")
         central.scanForPeripherals(withServices: [BLEManager.serviceUUID], options: nil)
     }
 
@@ -33,30 +35,38 @@ class BLEManager: NSObject {
         }
     }
 
-    /// Gửi JSON tới HUD — dùng withoutResponse để không chờ ACK,
-    /// tránh bị iOS timeout ngắt kết nối khi ESP đang bận vẽ OLED
     func send(json: [String: Any]) {
         guard let ch = writeCharacteristic,
               let data = try? JSONSerialization.data(withJSONObject: json),
-              let peripheral = peripheral else { return }
+              let peripheral = peripheral,
+              peripheral.state == .connected else { return }
         peripheral.writeValue(data, for: ch, type: .withoutResponse)
     }
 
-    /// Gửi chuỗi thô (chunk bitmap map cho Cách 2) — withoutResponse
     func sendRaw(_ string: String) {
         guard let ch = writeCharacteristic,
               let data = string.data(using: .utf8),
-              let peripheral = peripheral else { return }
+              let peripheral = peripheral,
+              peripheral.state == .connected else { return }
         peripheral.writeValue(data, for: ch, type: .withoutResponse)
     }
 }
 
 extension BLEManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if central.state == .poweredOn {
+        switch central.state {
+        case .poweredOn:
+            onConnectedChange?(false)
+            onStatusChange?("Đang tìm HUD…")
             startScan()
-        } else {
+        case .poweredOff:
+            stopScan()
+            onConnectedChange?(false)
             onStatusChange?("Bluetooth đang tắt")
+        default:
+            stopScan()
+            onConnectedChange?(false)
+            onStatusChange?("Bluetooth chưa sẵn sàng")
         }
     }
 
@@ -64,28 +74,34 @@ extension BLEManager: CBCentralManagerDelegate {
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         stopScan()
         self.peripheral = peripheral
+        onConnectedChange?(false)
+        onStatusChange?("Đang kết nối HUD…")
         central.connect(peripheral, options: nil)
-        onStatusChange?("Đang kết nối HUD...")
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        self.peripheral = peripheral
         peripheral.delegate = self
+        onConnectedChange?(false)
+        onStatusChange?("Đang xác thực HUD…")
         peripheral.discoverServices([BLEManager.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        onStatusChange?("Kết nối thất bại — thử lại...")
-        // Thử lại sau 1 giây
+        self.peripheral = nil
+        writeCharacteristic = nil
+        onConnectedChange?(false)
+        onStatusChange?("Kết nối thất bại — thử lại…")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.startScan()
         }
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        onConnectedChange?(false)
-        onStatusChange?("Mất kết nối — đang thử lại...")
+        self.peripheral = nil
         writeCharacteristic = nil
-        // Chờ 1 giây rồi quét lại cho ESP kịp quảng cáo
+        onConnectedChange?(false)
+        onStatusChange?("Mất kết nối — đang thử lại…")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.startScan()
         }
@@ -95,7 +111,9 @@ extension BLEManager: CBCentralManagerDelegate {
 extension BLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let service = peripheral.services?.first(where: { $0.uuid == BLEManager.serviceUUID }) else {
+            onConnectedChange?(false)
             onStatusChange?("Không thấy service HUD")
+            if peripheral.state == .connected { central.cancelPeripheralConnection(peripheral) }
             return
         }
         peripheral.discoverCharacteristics([BLEManager.writeUUID], for: service)
@@ -103,11 +121,14 @@ extension BLEManager: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         writeCharacteristic = service.characteristics?.first(where: { $0.uuid == BLEManager.writeUUID })
-        if writeCharacteristic != nil {
+        if writeCharacteristic != nil, peripheral.state == .connected {
             onConnectedChange?(true)
             onStatusChange?("Đã kết nối HUD ✓")
         } else {
-            onStatusChange?("Không thấy chữ WRITE")
+            writeCharacteristic = nil
+            onConnectedChange?(false)
+            onStatusChange?("Không thấy đặc tính ghi dữ liệu")
+            if peripheral.state == .connected { central.cancelPeripheralConnection(peripheral) }
         }
     }
 }

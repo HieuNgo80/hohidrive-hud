@@ -3,6 +3,7 @@ import MapKit
 
 struct RouteStopRow: View {
     @ObservedObject var model: DriveViewModel
+    var focusedStopID: FocusState<UUID?>.Binding
     let stopID: UUID
     let number: Int
 
@@ -24,21 +25,26 @@ struct RouteStopRow: View {
                             .foregroundStyle(number == 1 ? HOHITheme.pink : HOHITheme.purple)
                     }
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Destination \(number)")
-                            .font(.hohi(14, weight: .bold))
+                            .font(.hohi(14, weight: .semibold))
                             .foregroundStyle(HOHITheme.ink)
 
-                        TextField("Enter destination", text: Binding(
+                        TextField("Enter location", text: Binding(
                             get: { stop.address },
                             set: { model.updateStop($0, id: stop.id) }
                         ))
-                        .font(.hohi(13.5, weight: .medium))
+                        .font(.hohi(14, weight: .medium))
                         .foregroundStyle(HOHITheme.ink)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled(false)
-                        .submitLabel(.done)
+                        .submitLabel(number < model.maxStops ? .next : .done)
+                        .focused(focusedStopID, equals: stop.id)
                         .disabled(stop.completed)
+                        .onTapGesture {
+                            focusedStopID.wrappedValue = stop.id
+                            model.selectSuggestionField(id: stop.id)
+                        }
                     }
 
                     Spacer(minLength: 4)
@@ -71,6 +77,7 @@ struct RouteStopRow: View {
                     VStack(spacing: 0) {
                         ForEach(Array(model.suggestions.prefix(3)), id: \.self) { suggestion in
                             Button {
+                                focusedStopID.wrappedValue = nil
                                 model.chooseSuggestion(suggestion)
                             } label: {
                                 HStack(spacing: 9) {

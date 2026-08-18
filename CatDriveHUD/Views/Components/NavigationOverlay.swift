@@ -57,58 +57,36 @@ struct NavigationOverlay: View {
             VStack {
                 Spacer()
                 HStack(alignment: .bottom) {
-                    SpeedBadge(speed: speedText)
+                    VStack(spacing: 10) {
+                        SpeedBadge(speed: speedText)
+
+                        Button { model.stopNavigation() } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "stop.fill")
+                                Text("Stop")
+                            }
+                            .font(.hohi(12.5, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .frame(height: 42)
+                            .background(Color.red.opacity(0.92))
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.28), radius: 12, y: 5)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Spacer()
+
                     VStack(spacing: 10) {
                         NavigationCompassButton(model: model)
                         DarkZoomControls(model: model, mapView: mapView)
+                        RecenterButton(action: model.centerOnUser, dark: true)
                         NavigationMapOptions(model: model, showMapOptions: $showMapOptions)
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 174)
-            }
-
-            VStack {
-                Spacer()
-                Button { model.centerOnUser() } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "location.north.fill")
-                        Text("Re-center")
-                    }
-                    .font(.hohi(12, weight: .bold))
-                    .foregroundStyle(HOHITheme.purple)
-                    .padding(.horizontal, 17)
-                    .frame(height: 42)
-                    .background(.white.opacity(0.95))
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 116)
-            }
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Button { model.stopNavigation() } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "stop.fill")
-                            Text("STOP")
-                        }
-                        .font(.hohi(12.5, weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .frame(height: 44)
-                        .background(Color.red.opacity(0.90))
-                        .clipShape(Capsule())
-                        .shadow(color: .black.opacity(0.28), radius: 12, y: 5)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 114)
+                .padding(.bottom, 124)
             }
 
             VStack {
@@ -215,13 +193,16 @@ private struct DarkZoomControls: View {
     var body: some View {
         VStack(spacing: 0) {
             Button { model.zoomMap(0.62, mapView: mapView) } label: {
-                Image(systemName: "plus").frame(width: 48, height: 44)
+                Image(systemName: "plus")
+                    .frame(width: 48, height: 44)
             }
             Divider().background(.white.opacity(0.12))
             Button { model.zoomMap(1.62, mapView: mapView) } label: {
-                Image(systemName: "minus").frame(width: 48, height: 44)
+                Image(systemName: "minus")
+                    .frame(width: 48, height: 44)
             }
         }
+        .frame(width: 48)
         .font(.hohi(17, weight: .bold))
         .foregroundStyle(.white)
         .background(HOHITheme.navCard.opacity(0.95))

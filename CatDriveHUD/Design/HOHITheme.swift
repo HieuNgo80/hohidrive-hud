@@ -20,7 +20,7 @@ enum HOHITheme {
 
 extension Font {
     static func hohi(_ size: CGFloat, weight: Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .system(size: size, weight: weight, design: .default)
     }
 }
 
