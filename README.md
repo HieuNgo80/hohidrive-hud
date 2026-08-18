@@ -1,8 +1,8 @@
-# HOHI DRIVE HUD — V24
+# HOHI DRIVE HUD — V25
 
 Ứng dụng iPhone SwiftUI + MapKit kết nối BLE với ESP32 HUD.
 
-## UI V24
+## UI V25
 Bottom bar có 3 tab:
 - **Home** — nhập tối đa 6 điểm đến theo thứ tự.
 - **Map** — bản đồ thật tương tác và giao diện navigation.
@@ -26,6 +26,6 @@ Repository đã có `.github/workflows/build.yml`.
 4. Cài `CatDriveHUD.ipa` bằng AltStore.
 
 ## Version
-- App: 2.4
+- App: 2.5
 - Build: 24
 - Deployment target: iOS 16+

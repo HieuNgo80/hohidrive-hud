@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import UIKit
 
 struct DriveMapView: UIViewRepresentable {
     @ObservedObject var model: DriveViewModel
@@ -90,17 +91,34 @@ struct DriveMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
-            let userGesture = mapView.subviews
-                .flatMap { $0.gestureRecognizers ?? [] }
-                .contains { gesture in
-                    gesture.state == .began || gesture.state == .changed
-                }
-
-            if userGesture {
-                DispatchQueue.main.async {
-                    self.parent.model.followUser = false
+            // Keep this intentionally simple. In Release + whole-module optimization,
+            // the previous flatMap/contains chain could make Swift's type checker time out.
+            if hasActiveUserGesture(in: mapView) {
+                DispatchQueue.main.async { [weak self] in
+                    self?.parent.model.followUser = false
                 }
             }
+        }
+
+        private func hasActiveUserGesture(in view: UIView) -> Bool {
+            if let recognizers = view.gestureRecognizers {
+                for recognizer in recognizers {
+                    switch recognizer.state {
+                    case .began, .changed:
+                        return true
+                    default:
+                        break
+                    }
+                }
+            }
+
+            for subview in view.subviews {
+                if hasActiveUserGesture(in: subview) {
+                    return true
+                }
+            }
+
+            return false
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {

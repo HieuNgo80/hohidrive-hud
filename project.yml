@@ -10,13 +10,27 @@ targets:
     type: application
     platform: iOS
     sources:
-      - CatDriveHUD
+      - path: CatDriveHUD/AppDelegate.swift
+      - path: CatDriveHUD/BLEManager.swift
+      - path: CatDriveHUD/ContentView.swift
+      - path: CatDriveHUD/DriveViewModel.swift
+      - path: CatDriveHUD/MapViewRepresentable.swift
+      - path: CatDriveHUD/NavigationManager.swift
+      - path: CatDriveHUD/Design/HOHITheme.swift
+      - path: CatDriveHUD/Views/HomeView.swift
+      - path: CatDriveHUD/Views/MapScreen.swift
+      - path: CatDriveHUD/Views/OrdersView.swift
+      - path: CatDriveHUD/Views/ArrivalView.swift
+      - path: CatDriveHUD/Views/Components/BottomBar.swift
+      - path: CatDriveHUD/Views/Components/NavigationOverlay.swift
+      - path: CatDriveHUD/Views/Components/RouteStopRow.swift
+      - path: CatDriveHUD/Assets.xcassets
     info:
       path: CatDriveHUD/Info.plist
       properties:
         CFBundleDisplayName: Hohi Drive HUD
-        CFBundleShortVersionString: "2.4"
-        CFBundleVersion: "24"
+        CFBundleShortVersionString: "2.5"
+        CFBundleVersion: "25"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
