@@ -1,16 +1,31 @@
-# Hohi Drive HUD — UI 2.1
+# HOHI DRIVE HUD — V24
 
-Ứng dụng iPhone dẫn đường + BLE HUD ESP32.
+Ứng dụng iPhone SwiftUI + MapKit kết nối BLE với ESP32 HUD.
 
-## Giao diện
-- SwiftUI hiện đại, nền lavender sáng, chỉ dùng hồng làm điểm nhấn.
-- MapKit bản đồ thật.
-- Nhập tối đa 5 chặng với nút **Thêm chặng**.
-- Tab **Đơn hàng** lưu các chặng đã hoàn thành và cho nhập số lượng đơn.
-- Không hiển thị QR trên iPhone.
+## UI V24
+Bottom bar có 3 tab:
+- **Home** — nhập tối đa 6 điểm đến theo thứ tự.
+- **Map** — bản đồ thật tương tác và giao diện navigation.
+- **Order** — lịch sử chặng đã hoàn thành; sẽ phát triển thêm sau.
 
-## Logic OLED / QR
-Khi hoàn thành một chặng, app gửi chuỗi VietQR xuống ESP32 bằng BLE trong gói `arrive`. OLED chịu trách nhiệm hiển thị QR. App chỉ hiện thông báo “Mã thanh toán đang được gửi tới OLED”. Khi bấm **Tiếp tục chặng tiếp theo**, app gửi dữ liệu navigation mới, firmware sẽ tắt QR và trở lại màn hình chỉ đường. Firmware hiện tại của dự án có cơ chế giữ QR 5 phút.
+## Logic cũ được giữ lại
+- BLE service/write UUID tương thích firmware HUD hiện tại.
+- MapKit / MKDirections.
+- Route steps, maneuver, tên đường, ETA, tốc độ.
+- Ngưỡng báo rẽ 100 m.
+- Nhiều chặng.
+- Khi hoàn thành từng chặng, app gửi `maneuver: arrive` + dữ liệu `qr` tới HUD.
+- QR **không hiển thị trên iPhone**; OLED ngoài chịu trách nhiệm hiển thị.
 
-## Build GitHub Actions
-Workflow dùng XcodeGen + xcodebuild trên macOS. Chỉ cần push toàn bộ thư mục này lên GitHub và chạy workflow `Build iOS`.
+## Build không cần Mac riêng
+Repository đã có `.github/workflows/build.yml`.
+
+1. Upload toàn bộ nội dung project này lên repository GitHub.
+2. Vào **Actions → Build iOS → Run workflow**.
+3. Tải artifact `CatDriveHUD-ipa`.
+4. Cài `CatDriveHUD.ipa` bằng AltStore.
+
+## Version
+- App: 2.4
+- Build: 24
+- Deployment target: iOS 16+

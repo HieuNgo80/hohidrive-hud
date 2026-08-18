@@ -1,20 +1,25 @@
-# Hohi Drive HUD — GitHub build
+# START HERE — HOHI DRIVE V24
 
-## Không cần Mac/Xcode
-1. Tải ZIP này.
-2. Giải nén.
-3. Đưa **toàn bộ nội dung bên trong thư mục** lên repository GitHub.
-4. Vào tab **Actions** → workflow **Build iOS** → **Run workflow**.
-5. Sau khi build xong, vào run vừa build → **Artifacts** → tải `CatDriveHUD-ipa`.
+Bạn **không cần Mac/Xcode trên máy cá nhân** để build bản này.
 
-Workflow tự cài XcodeGen, tạo `.xcodeproj` và build unsigned IPA trên máy macOS của GitHub Actions.
+## Upload lên GitHub
+1. Giải nén `hohidrive-hud-V24-GitHub.zip`.
+2. Mở thư mục `hohidrive-hud-V24` bên trong.
+3. Upload **toàn bộ nội dung** lên repo `HieuNgo80/hohidrive-hud`, thay cho source cũ.
+4. Đảm bảo `.github/workflows/build.yml` vẫn có trên GitHub.
 
-## Giao diện 2.1
-- SwiftUI + MapKit thật.
-- Nền lavender sáng, phong cách sạch/hiện đại.
-- Hồng chỉ làm accent, không dùng neon hồng toàn màn hình.
-- Tối đa 5 chặng, nút **Thêm chặng**.
-- Tab **Đơn hàng** giữ lại, lưu các chặng hoàn thành và số lượng đơn.
-- Không có QR image trên iPhone.
-- Khi hoàn thành chặng, app gửi `qr` xuống ESP32; OLED hiển thị QR.
-- Bấm **Tiếp tục chặng tiếp theo** sẽ gửi navigation mới để OLED quay lại màn hình chỉ đường.
+## Build IPA
+1. GitHub → tab **Actions**.
+2. Chọn **Build iOS**.
+3. **Run workflow**.
+4. Khi xong tải artifact `CatDriveHUD-ipa`.
+5. Giải nén artifact để lấy `CatDriveHUD.ipa`, cài bằng AltStore.
+
+## Test UI
+- **Home**: nhập Destination 1; khi đã có nội dung nút Add Stop mới hoạt động.
+- **Map**: pan, pinch zoom, rotate; Re-center; compass/heading; +/-; đổi lớp bản đồ.
+- Khi đang navigation: menu dấu `...` → **Simulate Arrival** để test giao diện Trip Completed.
+- **Order**: lịch sử các chặng đã hoàn thành.
+
+## QR
+Ứng dụng không hiển thị QR. Khi hoàn thành chặng, dữ liệu thanh toán được gửi qua BLE cho HUD/OLED theo logic cũ.

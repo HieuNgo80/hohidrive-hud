@@ -77,13 +77,14 @@ final class DriveViewModel: NSObject, ObservableObject {
     @Published var centerRequest = 0
     @Published var selectedOrderTab = 0
 
-    let maxStops = 5
+    let maxStops = 6
     let locationManager = CLLocationManager()
     let ble = BLEManager()
     let nav = NavigationManager()
     let completer = MKLocalSearchCompleter()
 
     private var pendingCoordinate: CLLocationCoordinate2D?
+    private var pendingStopID: UUID?
     private var lastSentTime: TimeInterval = 0
     private let turnPreviewDistanceM: Double = 100
 
@@ -113,10 +114,23 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     func removeStop(id: UUID) {
-        guard stops.count > 1, let index = stops.firstIndex(where: { $0.id == id }), !stops[index].completed else { return }
+        guard let index = stops.firstIndex(where: { $0.id == id }), !stops[index].completed else { return }
+
+        // Luôn giữ ít nhất một ô Destination để Home không rơi vào trạng thái mảng rỗng.
+        // Dùng UUID thay vì giữ index qua các callback async để tránh crash khi người dùng xóa chặng.
+        if stops.count == 1 {
+            stops[0].address = ""
+            stops[0].coordinate = nil
+            activeStopID = stops[0].id
+            suggestions = []
+            return
+        }
+
         let wasActive = activeStopID == id
         stops.remove(at: index)
-        if wasActive { activeStopID = stops.indices.contains(index) ? stops[index].id : stops.last?.id }
+        if wasActive {
+            activeStopID = stops.indices.contains(index) ? stops[index].id : stops.last?.id
+        }
         suggestions = []
     }
 
@@ -133,15 +147,17 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     func chooseSuggestion(_ completion: MKLocalSearchCompletion) {
-        guard let id = activeStopID, let i = stops.firstIndex(where: { $0.id == id }) else { return }
+        guard let stopID = activeStopID else { return }
         let request = MKLocalSearch.Request(completion: completion)
         MKLocalSearch(request: request).start { [weak self] response, _ in
             guard let self, let item = response?.mapItems.first else { return }
             DispatchQueue.main.async {
-                self.stops[i].address = completion.title
-                self.stops[i].coordinate = item.placemark.coordinate
+                // Tìm lại index theo UUID sau khi search trả về. Nếu chặng đã bị xóa thì bỏ callback.
+                guard let index = self.stops.firstIndex(where: { $0.id == stopID }) else { return }
+                self.stops[index].address = completion.title
+                self.stops[index].coordinate = item.placemark.coordinate
                 self.suggestions = []
-                self.statusText = "Đã chọn điểm \(i + 1)"
+                self.statusText = "Đã chọn điểm \(index + 1)"
             }
         }
     }
@@ -153,10 +169,10 @@ final class DriveViewModel: NSObject, ObservableObject {
 
         if let idx = nextIncompleteIndex {
             currentStopIndex = idx
-            resolveCoordinatesThenStart(at: idx)
+            resolveCoordinatesThenStart(stopID: stops[idx].id)
         } else {
             resetTrip()
-            if let idx = nextIncompleteIndex { resolveCoordinatesThenStart(at: idx) }
+            if let idx = nextIncompleteIndex { resolveCoordinatesThenStart(stopID: stops[idx].id) }
         }
     }
 
@@ -168,7 +184,7 @@ final class DriveViewModel: NSObject, ObservableObject {
             return
         }
         currentStopIndex = idx
-        resolveCoordinatesThenStart(at: idx)
+        resolveCoordinatesThenStart(stopID: stops[idx].id)
     }
 
     func startNewTrip() {
@@ -197,6 +213,15 @@ final class DriveViewModel: NSObject, ObservableObject {
         currentStepIndex = 0
         sendIdleToHUD()
         statusText = "Đã dừng chuyến"
+    }
+
+    /// Dùng để test UI hoàn thành chặng ngay trên iPhone. Không thay đổi firmware OLED.
+    func simulateArrival() {
+        guard isNavigating, !routeSteps.isEmpty else {
+            statusText = "Chưa có chặng đang dẫn đường để giả lập"
+            return
+        }
+        arriveCurrentStage()
     }
 
     func centerOnUser() {
@@ -252,53 +277,72 @@ final class DriveViewModel: NSObject, ObservableObject {
         showArrival = false
     }
 
-    private func resolveCoordinatesThenStart(at index: Int) {
-        guard stops.indices.contains(index) else { return }
+    private func resolveCoordinatesThenStart(stopID: UUID) {
+        guard let index = stops.firstIndex(where: { $0.id == stopID }) else { return }
         let destinationText = stops[index].address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !destinationText.isEmpty else { statusText = "Chặng \(index + 1) chưa có địa chỉ"; return }
+        guard !destinationText.isEmpty else {
+            statusText = "Chặng \(index + 1) chưa có địa chỉ"
+            return
+        }
 
         isCalculating = true
         statusText = "Đang tìm địa chỉ…"
+
         if let coordinate = stops[index].coordinate {
-            fetchLeg(to: coordinate, stopIndex: index)
+            fetchLeg(to: coordinate, stopID: stopID)
             return
         }
 
         CLGeocoder().geocodeAddressString(destinationText) { [weak self] placemarks, _ in
             guard let self else { return }
             DispatchQueue.main.async {
+                guard let currentIndex = self.stops.firstIndex(where: { $0.id == stopID }) else {
+                    self.isCalculating = false
+                    return
+                }
                 guard let coordinate = placemarks?.first?.location?.coordinate else {
                     self.isCalculating = false
                     self.statusText = "Không tìm thấy: \(destinationText)"
                     return
                 }
-                self.stops[index].coordinate = coordinate
-                self.fetchLeg(to: coordinate, stopIndex: index)
+                self.stops[currentIndex].coordinate = coordinate
+                self.fetchLeg(to: coordinate, stopID: stopID)
             }
         }
     }
 
-    private func fetchLeg(to destination: CLLocationCoordinate2D, stopIndex: Int) {
+    private func fetchLeg(to destination: CLLocationCoordinate2D, stopID: UUID) {
+        guard let currentIndex = stops.firstIndex(where: { $0.id == stopID }) else {
+            isCalculating = false
+            return
+        }
+
         guard let origin = locationManager.location?.coordinate ?? currentLocation?.coordinate else {
             pendingCoordinate = destination
+            pendingStopID = stopID
+            currentStopIndex = currentIndex
             statusText = "Đang chờ vị trí GPS…"
             return
         }
+
         nav.fetchRoute(from: origin, to: destination) { [weak self] steps, _, totalDistanceText, coordinates in
             guard let self else { return }
             self.isCalculating = false
+
+            guard let resolvedIndex = self.stops.firstIndex(where: { $0.id == stopID }) else { return }
             guard !steps.isEmpty, !coordinates.isEmpty else {
                 self.statusText = "Không tìm thấy tuyến đường"
                 return
             }
-            self.currentStopIndex = stopIndex
+
+            self.currentStopIndex = resolvedIndex
             self.routeSteps = steps
             self.routeCoordinates = coordinates
             self.currentStepIndex = 0
             self.isNavigating = true
             self.followUser = true
             self.centerRequest &+= 1
-            self.statusText = "Đang dẫn đường · Chặng \(stopIndex + 1)/\(self.stops.count) · \(totalDistanceText)"
+            self.statusText = "Đang dẫn đường · Chặng \(resolvedIndex + 1)/\(self.stops.count) · \(totalDistanceText)"
             self.sendCurrentNavigation(force: true)
         }
     }
@@ -445,9 +489,10 @@ extension DriveViewModel: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         currentLocation = location
-        if let pending = pendingCoordinate {
+        if let pending = pendingCoordinate, let stopID = pendingStopID {
             pendingCoordinate = nil
-            fetchLeg(to: pending, stopIndex: currentStopIndex)
+            pendingStopID = nil
+            fetchLeg(to: pending, stopID: stopID)
             return
         }
         if isNavigating { updateNavigation(location) }
