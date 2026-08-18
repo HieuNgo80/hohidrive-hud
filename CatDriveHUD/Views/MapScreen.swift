@@ -206,7 +206,7 @@ private struct LightExtraControls: View {
     }
 }
 
-private struct RecenterButton: View {
+struct RecenterButton: View {
     let action: () -> Void
     let dark: Bool
 
