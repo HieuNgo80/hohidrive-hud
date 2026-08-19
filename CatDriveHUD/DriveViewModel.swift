@@ -402,10 +402,8 @@ final class DriveViewModel: NSObject, ObservableObject {
             "speed": 0,
             "distance": 0,
             "next_road": "ĐÃ ĐẾN NƠI",
-            "next_road_sub": "",
             "eta": eta,
             "ete": "",
-            "total_distance": totalDistance,
             "maneuver": "arrive",
             "qr": qrString,
             "next": ""
@@ -428,21 +426,16 @@ final class DriveViewModel: NSObject, ObservableObject {
         let formatter = DateFormatter(); formatter.dateFormat = "HH:mm"
         let displayManeuver = maneuverForHUD(step: step, distance: distance)
         let road = roadNameForHUD(stepIndex: currentStepIndex, distance: distance)
-        let totalDistance = NavigationManager.formatDistance(Double(routeSteps.reduce(0) { $0 + $1.distance }))
-        let relative = NavigationManager.relativeRoutePoints(from: location, routeCoords: routeCoordinates)
 
         ble.send(json: [
             "speed": max(0, Int(location.speed * 3.6)),
-            "distance": NavigationManager.formatDistance(distance),
+            // Firmware expects distance in metres; send a number, not "1.2 km".
+            "distance": max(1, Int(distance.rounded())),
             "next_road": road.isEmpty ? "Đang dẫn đường" : road,
-            "next_road_sub": step.instruction,
             "eta": formatter.string(from: eta),
             "ete": formatDuration(remainingSec),
-            "total_distance": totalDistance,
             "maneuver": displayManeuver,
-            "actual_maneuver": step.maneuver,
-            "next": (currentStepIndex + 1..<min(currentStepIndex + 5, routeSteps.count)).map { routeSteps[$0].maneuver }.joined(separator: ","),
-            "route_points": relative
+            "next": (currentStepIndex + 1..<min(currentStepIndex + 5, routeSteps.count)).map { routeSteps[$0].maneuver }.joined(separator: ",")
         ])
     }
 
