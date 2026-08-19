@@ -29,8 +29,8 @@ targets:
       path: CatDriveHUD/Info.plist
       properties:
         CFBundleDisplayName: Hohi Drive HUD
-        CFBundleShortVersionString: "2.7"
-        CFBundleVersion: "27"
+        CFBundleShortVersionString: "2.8"
+        CFBundleVersion: "28"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

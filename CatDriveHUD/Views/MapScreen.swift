@@ -49,29 +49,10 @@ private struct IdleMapOverlay: View {
         return "\(max(0, Int(speed * 3.6)))"
     }
 
-    private var connectionLabel: String {
-        model.hudConnected ? "HUD Connected" : "HUD Not Connected"
-    }
-
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("HOHI DRIVE")
-                            .font(.hohi(19, weight: .heavy))
-                            .tracking(0.4)
-                            .foregroundStyle(HOHITheme.ink)
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(model.hudConnected ? HOHITheme.purple : HOHITheme.pink)
-                                .frame(width: 7, height: 7)
-                            Text(connectionLabel)
-                                .font(.hohi(11.5, weight: .semibold))
-                                .foregroundStyle(model.hudConnected ? HOHITheme.purple : HOHITheme.muted)
-                        }
-                    }
-
                     Spacer()
 
                     VStack(spacing: 0) {

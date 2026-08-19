@@ -59,8 +59,8 @@ struct ContentView: View {
 
             if showBottomBar {
                 BottomBar(tab: $tab)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

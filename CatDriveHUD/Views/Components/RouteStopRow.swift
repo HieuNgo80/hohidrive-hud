@@ -7,12 +7,23 @@ struct RouteStopRow: View {
     let stopID: UUID
     let number: Int
 
-    private var stop: DriveStop? {
+    private var currentStop: DriveStop? {
         model.stops.first(where: { $0.id == stopID })
     }
 
+    private var addressBinding: Binding<String> {
+        Binding(
+            get: {
+                model.stops.first(where: { $0.id == stopID })?.address ?? ""
+            },
+            set: { newValue in
+                model.updateStop(newValue, id: stopID)
+            }
+        )
+    }
+
     var body: some View {
-        if let stop {
+        if let stop = currentStop {
             VStack(spacing: 0) {
                 HStack(alignment: .top, spacing: 12) {
                     ZStack {
@@ -30,21 +41,14 @@ struct RouteStopRow: View {
                             .font(.hohi(14, weight: .semibold))
                             .foregroundStyle(HOHITheme.ink)
 
-                        TextField("Enter location", text: Binding(
-                            get: { stop.address },
-                            set: { model.updateStop($0, id: stop.id) }
-                        ))
-                        .font(.hohi(14, weight: .medium))
-                        .foregroundStyle(HOHITheme.ink)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled(false)
-                        .submitLabel(number < model.maxStops ? .next : .done)
-                        .focused(focusedStopID, equals: stop.id)
-                        .disabled(stop.completed)
-                        .onTapGesture {
-                            focusedStopID.wrappedValue = stop.id
-                            model.selectSuggestionField(id: stop.id)
-                        }
+                        TextField("Enter location", text: addressBinding)
+                            .font(.hohi(14, weight: .medium))
+                            .foregroundStyle(HOHITheme.ink)
+                            .textInputAutocapitalization(.words)
+                            .autocorrectionDisabled(false)
+                            .submitLabel(number < model.maxStops ? .next : .done)
+                            .focused(focusedStopID, equals: stopID)
+                            .disabled(stop.completed)
                     }
 
                     Spacer(minLength: 4)
@@ -56,8 +60,11 @@ struct RouteStopRow: View {
                             .padding(.top, 3)
                     } else {
                         Button {
-                            withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-                                model.removeStop(id: stop.id)
+                            focusedStopID.wrappedValue = nil
+                            DispatchQueue.main.async {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                                    model.removeStop(id: stopID)
+                                }
                             }
                         } label: {
                             Image(systemName: "xmark")
@@ -71,14 +78,14 @@ struct RouteStopRow: View {
                         .disabled(model.isCalculating)
                     }
                 }
-                .padding(.vertical, 9)
+                .padding(.vertical, 8)
 
-                if model.activeStopID == stop.id && !model.suggestions.isEmpty && !stop.completed {
+                if model.activeStopID == stopID && !model.suggestions.isEmpty && !stop.completed {
                     VStack(spacing: 0) {
                         ForEach(Array(model.suggestions.prefix(3)), id: \.self) { suggestion in
                             Button {
-                                focusedStopID.wrappedValue = nil
                                 model.chooseSuggestion(suggestion)
+                                focusedStopID.wrappedValue = nil
                             } label: {
                                 HStack(spacing: 9) {
                                     Image(systemName: "mappin.and.ellipse")
@@ -103,7 +110,7 @@ struct RouteStopRow: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .background(HOHITheme.background.opacity(0.72))
+                    .background(HOHITheme.background.opacity(0.74))
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.leading, 52)
                     .padding(.bottom, 4)

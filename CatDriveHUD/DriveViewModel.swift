@@ -63,7 +63,7 @@ final class DriveViewModel: NSObject, ObservableObject {
     @Published var currentStopIndex = 0
     @Published var isNavigating = false
     @Published var isCalculating = false
-    @Published var statusText = "Ready for a new trip"
+    @Published var statusText = ""
     @Published var connectionText = "HUD not connected"
     @Published var hudConnected = false
     @Published var suggestions: [MKLocalSearchCompletion] = []
@@ -202,7 +202,7 @@ final class DriveViewModel: NSObject, ObservableObject {
         followUser = true
         centerRequest &+= 1
         sendIdleToHUD()
-        statusText = "Sẵn sàng cho chuyến mới"
+        statusText = ""
     }
 
     func stopNavigation() {
@@ -349,6 +349,21 @@ final class DriveViewModel: NSObject, ObservableObject {
 
     private func updateNavigation(_ location: CLLocation) {
         guard isNavigating, !routeSteps.isEmpty else { return }
+
+        // Kiểm tra trực tiếp khoảng cách đến destination hiện tại trước.
+        // Cách này ổn định hơn việc chỉ dựa vào endpoint của từng MKRoute.Step.
+        if stops.indices.contains(currentStopIndex),
+           let destinationCoordinate = stops[currentStopIndex].coordinate {
+            let destinationLocation = CLLocation(
+                latitude: destinationCoordinate.latitude,
+                longitude: destinationCoordinate.longitude
+            )
+            if destinationLocation.distance(from: location) <= 40 {
+                arriveCurrentStage()
+                return
+            }
+        }
+
         var bestIndex = currentStepIndex
         var bestDistance = Double.greatestFiniteMagnitude
         for i in currentStepIndex..<routeSteps.count {
