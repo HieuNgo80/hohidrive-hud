@@ -1,10 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @ObservedObject var model: DriveViewModel
     let onStart: () -> Void
-
-    @FocusState private var focusedStopID: UUID?
 
     private var canAddStop: Bool {
         guard model.stops.count < model.maxStops, let last = model.stops.last else { return false }
@@ -28,13 +27,7 @@ struct HomeView: View {
                 .padding(.top, 275)
                 .padding(.bottom, 102)
         }
-        // Quan trọng: không tự focus khi Home xuất hiện và không tự focus sau khi Add Location.
-        // Điều này tránh việc bàn phím vừa hiện đã bị SwiftUI tái-layout rồi mất first responder.
-        .onChange(of: focusedStopID) { newValue in
-            if let id = newValue {
-                model.selectSuggestionField(id: id)
-            }
-        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private var routeCard: some View {
@@ -82,7 +75,7 @@ struct HomeView: View {
 
     private var destinationList: some View {
         ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
+            VStack(spacing: 0) {
                 ForEach(Array(model.stops.enumerated()), id: \.element.id) { index, stop in
                     if index > 0 {
                         Divider()
@@ -92,7 +85,6 @@ struct HomeView: View {
 
                     RouteStopRow(
                         model: model,
-                        focusedStopID: $focusedStopID,
                         stopID: stop.id,
                         number: index + 1
                     )
@@ -147,7 +139,7 @@ struct HomeView: View {
     private var startRouteButton: some View {
         Button {
             guard canStart else { return }
-            focusedStopID = nil
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             model.startOrContinue()
             onStart()
         } label: {

@@ -24,13 +24,14 @@ targets:
       - path: CatDriveHUD/Views/Components/BottomBar.swift
       - path: CatDriveHUD/Views/Components/NavigationOverlay.swift
       - path: CatDriveHUD/Views/Components/RouteStopRow.swift
+      - path: CatDriveHUD/Views/Components/StableTextField.swift
       - path: CatDriveHUD/Assets.xcassets
     info:
       path: CatDriveHUD/Info.plist
       properties:
         CFBundleDisplayName: Hohi Drive HUD
-        CFBundleShortVersionString: "2.8"
-        CFBundleVersion: "28"
+        CFBundleShortVersionString: "2.9"
+        CFBundleVersion: "29"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

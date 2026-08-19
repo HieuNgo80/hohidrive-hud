@@ -1,9 +1,9 @@
 import SwiftUI
+import UIKit
 import MapKit
 
 struct RouteStopRow: View {
     @ObservedObject var model: DriveViewModel
-    var focusedStopID: FocusState<UUID?>.Binding
     let stopID: UUID
     let number: Int
 
@@ -41,14 +41,18 @@ struct RouteStopRow: View {
                             .font(.hohi(14, weight: .semibold))
                             .foregroundStyle(HOHITheme.ink)
 
-                        TextField("Enter location", text: addressBinding)
-                            .font(.hohi(14, weight: .medium))
-                            .foregroundStyle(HOHITheme.ink)
-                            .textInputAutocapitalization(.words)
-                            .autocorrectionDisabled(false)
-                            .submitLabel(number < model.maxStops ? .next : .done)
-                            .focused(focusedStopID, equals: stopID)
-                            .disabled(stop.completed)
+                        StableTextField(
+                            text: addressBinding,
+                            placeholder: "Enter location",
+                            isEnabled: !stop.completed,
+                            returnKeyType: number < model.maxStops ? .next : .done,
+                            onBeginEditing: {
+                                model.selectSuggestionField(id: stopID)
+                            },
+                            onSubmit: {}
+                        )
+                        .frame(height: 28)
+                        .id(stopID)
                     }
 
                     Spacer(minLength: 4)
@@ -60,7 +64,6 @@ struct RouteStopRow: View {
                             .padding(.top, 3)
                     } else {
                         Button {
-                            focusedStopID.wrappedValue = nil
                             DispatchQueue.main.async {
                                 withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
                                     model.removeStop(id: stopID)
@@ -85,7 +88,12 @@ struct RouteStopRow: View {
                         ForEach(Array(model.suggestions.prefix(3)), id: \.self) { suggestion in
                             Button {
                                 model.chooseSuggestion(suggestion)
-                                focusedStopID.wrappedValue = nil
+                                UIApplication.shared.sendAction(
+                                    #selector(UIResponder.resignFirstResponder),
+                                    to: nil,
+                                    from: nil,
+                                    for: nil
+                                )
                             } label: {
                                 HStack(spacing: 9) {
                                     Image(systemName: "mappin.and.ellipse")
