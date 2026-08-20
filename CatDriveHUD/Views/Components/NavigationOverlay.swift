@@ -14,9 +14,8 @@ struct NavigationOverlay: View {
     }
 
     private var distanceText: String {
-        guard let step, let location = model.currentLocation else { return "—" }
-        let end = CLLocation(latitude: step.endLat, longitude: step.endLng)
-        return NavigationManager.formatDistance(end.distance(from: location))
+        guard step != nil else { return "—" }
+        return NavigationManager.formatDistance(model.currentManeuverDistance)
     }
 
     private var roadName: String {
@@ -29,6 +28,9 @@ struct NavigationOverlay: View {
         case "left": return "arrow.turn.up.left"
         case "right": return "arrow.turn.up.right"
         case "uturn": return "arrow.uturn.left"
+        case "roundabout": return "arrow.triangle.2.circlepath"
+        case "slight_left", "keep_left", "sharp_left": return "arrow.turn.up.left"
+        case "slight_right", "keep_right", "sharp_right": return "arrow.turn.up.right"
         case "arrive": return "checkmark"
         default: return "arrow.up"
         }
@@ -45,7 +47,7 @@ struct NavigationOverlay: View {
                 NavigationTopCard(
                     distance: distanceText,
                     roadName: roadName,
-                    instruction: step?.instruction ?? "Calculating direction…",
+                    instruction: model.isRerouting ? "Recalculating route…" : (step?.instruction ?? "Calculating direction…"),
                     maneuverIcon: maneuverIcon
                 )
                 .padding(.horizontal, 14)
@@ -258,9 +260,12 @@ private struct NavigationBottomStats: View {
     }
 
     private var totalDistance: String {
-        NavigationManager.formatDistance(
-            Double(model.routeSteps.reduce(0) { $0 + $1.distance })
-        )
+        guard !model.routeSteps.isEmpty,
+              model.routeSteps.indices.contains(model.currentStepIndex) else { return "—" }
+        let afterCurrent = model.routeSteps
+            .dropFirst(model.currentStepIndex + 1)
+            .reduce(0.0) { $0 + Double($1.distance) }
+        return NavigationManager.formatDistance(model.currentManeuverDistance + afterCurrent)
     }
 
     var body: some View {

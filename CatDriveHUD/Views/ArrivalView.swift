@@ -81,10 +81,10 @@ struct ArrivalView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Payment is ready")
+                            Text(model.qrString.isEmpty ? "Payment QR is not configured" : "Payment is ready")
                                 .font(.hohi(15, weight: .bold))
                                 .foregroundStyle(HOHITheme.ink)
-                            Text("The payment QR is showing on the external OLED device.")
+                            Text(model.qrString.isEmpty ? "Open Order and save the QR payment data before the next completed stage." : "The payment QR is showing on the external OLED device.")
                                 .font(.hohi(12.5, weight: .medium))
                                 .foregroundStyle(HOHITheme.muted)
                                 .fixedSize(horizontal: false, vertical: true)

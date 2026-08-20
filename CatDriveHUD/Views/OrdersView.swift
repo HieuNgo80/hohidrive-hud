@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OrdersView: View {
     @ObservedObject var model: DriveViewModel
+    @State private var qrDraft = ""
 
     var body: some View {
         ZStack {
@@ -14,24 +15,8 @@ struct OrdersView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Orders")
-                                .font(.hohi(31, weight: .black))
-                                .foregroundStyle(HOHITheme.ink)
-                            Text("Completed routes today")
-                                .font(.hohi(13.5, weight: .medium))
-                                .foregroundStyle(HOHITheme.muted)
-                        }
-                        Spacer()
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .font(.hohi(18, weight: .bold))
-                            .foregroundStyle(HOHITheme.purple)
-                            .frame(width: 46, height: 46)
-                            .background(.white.opacity(0.82))
-                            .clipShape(Circle())
-                    }
-                    .padding(.top, 18)
+                    header
+                    paymentQRCard
 
                     HStack(spacing: 10) {
                         SummaryPill(value: "\(model.completedTrips.count)", label: "Routes")
@@ -56,6 +41,110 @@ struct OrdersView: View {
                 .padding(.horizontal, 18)
             }
         }
+        .onAppear { qrDraft = model.qrString }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Orders")
+                    .font(.hohi(31, weight: .black))
+                    .foregroundStyle(HOHITheme.ink)
+                Text("Payment setup & completed routes")
+                    .font(.hohi(13.5, weight: .medium))
+                    .foregroundStyle(HOHITheme.muted)
+            }
+            Spacer()
+            Image(systemName: "bag.fill")
+                .font(.hohi(17, weight: .bold))
+                .foregroundStyle(HOHITheme.purple)
+                .frame(width: 46, height: 46)
+                .background(.white.opacity(0.82))
+                .clipShape(Circle())
+        }
+        .padding(.top, 18)
+    }
+
+    private var paymentQRCard: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Payment QR")
+                        .font(.hohi(17, weight: .black))
+                        .foregroundStyle(HOHITheme.ink)
+                    Text("Paste the QR payment data used for every completed stage.")
+                        .font(.hohi(11.5, weight: .medium))
+                        .foregroundStyle(HOHITheme.muted)
+                }
+                Spacer()
+                Text(model.qrString.isEmpty ? "NOT SET" : "SAVED")
+                    .font(.hohi(9.5, weight: .black))
+                    .foregroundStyle(model.qrString.isEmpty ? HOHITheme.pink : HOHITheme.purple)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background((model.qrString.isEmpty ? HOHITheme.pink : HOHITheme.purple).opacity(0.08))
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "qrcode")
+                    .font(.hohi(18, weight: .bold))
+                    .foregroundStyle(HOHITheme.purple)
+
+                StableTextField(
+                    text: $qrDraft,
+                    placeholder: "Paste VietQR / QR payload here",
+                    returnKeyType: .done,
+                    onSubmit: { model.saveQR(qrDraft) }
+                )
+                .frame(height: 42)
+            }
+            .padding(.horizontal, 14)
+            .background(HOHITheme.background.opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+            HStack(spacing: 10) {
+                Button {
+                    model.saveQR(qrDraft)
+                } label: {
+                    Text("Save QR Data")
+                        .font(.hohi(12.5, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 43)
+                        .background(HOHITheme.primaryGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                if !model.qrString.isEmpty || !qrDraft.isEmpty {
+                    Button {
+                        qrDraft = ""
+                        model.clearQR()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.hohi(13, weight: .bold))
+                            .foregroundStyle(HOHITheme.pink)
+                            .frame(width: 44, height: 43)
+                            .background(HOHITheme.pink.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "display")
+                    .font(.hohi(12, weight: .bold))
+                    .foregroundStyle(HOHITheme.purple)
+                Text("The QR image is never displayed in the iPhone app. When a stage is completed, this saved payload is sent to the external OLED HUD for 5 minutes.")
+                    .font(.hohi(10.5, weight: .medium))
+                    .foregroundStyle(HOHITheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .hohiCard(radius: 22)
     }
 
     private var placeholder: some View {

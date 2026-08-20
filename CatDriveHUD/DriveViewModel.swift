@@ -76,6 +76,9 @@ final class DriveViewModel: NSObject, ObservableObject {
     @Published var headingMode = false
     @Published var centerRequest = 0
     @Published var selectedOrderTab = 0
+    @Published var qrString = UserDefaults.standard.string(forKey: "qrString") ?? ""
+    @Published var currentManeuverDistance: Double = 0
+    @Published var isRerouting = false
 
     let maxStops = 6
     let locationManager = CLLocationManager()
@@ -87,11 +90,9 @@ final class DriveViewModel: NSObject, ObservableObject {
     private var pendingStopID: UUID?
     private var lastSentTime: TimeInterval = 0
     private let turnPreviewDistanceM: Double = 100
-
-    var qrString: String {
-        get { UserDefaults.standard.string(forKey: "qrString") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "qrString") }
-    }
+    private var offRouteSampleCount = 0
+    private var lastRerouteAt: TimeInterval = 0
+    private let rerouteCooldown: TimeInterval = 7
 
     var nextIncompleteIndex: Int? {
         stops.firstIndex { !$0.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.completed }
@@ -196,6 +197,9 @@ final class DriveViewModel: NSObject, ObservableObject {
         currentStopIndex = 0
         showArrival = false
         lastCompletedStopNumber = 0
+        currentManeuverDistance = 0
+        isRerouting = false
+        offRouteSampleCount = 0
         stops = [DriveStop(address: "")]
         activeStopID = nil
         suggestions = []
@@ -211,6 +215,9 @@ final class DriveViewModel: NSObject, ObservableObject {
         routeSteps = []
         routeCoordinates = []
         currentStepIndex = 0
+        currentManeuverDistance = 0
+        isRerouting = false
+        offRouteSampleCount = 0
         sendIdleToHUD()
         statusText = "Đã dừng chuyến"
     }
@@ -262,7 +269,12 @@ final class DriveViewModel: NSObject, ObservableObject {
 
     func saveQR(_ value: String) {
         qrString = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        UserDefaults.standard.set(qrString, forKey: "qrString")
         statusText = qrString.isEmpty ? "Đã xóa dữ liệu thanh toán" : "Đã lưu dữ liệu thanh toán"
+    }
+
+    func clearQR() {
+        saveQR("")
     }
 
     private func resetTrip() {
@@ -339,6 +351,9 @@ final class DriveViewModel: NSObject, ObservableObject {
             self.routeSteps = steps
             self.routeCoordinates = coordinates
             self.currentStepIndex = 0
+            self.currentManeuverDistance = steps.first.map { Double($0.distance) } ?? 0
+            self.isRerouting = false
+            self.offRouteSampleCount = 0
             self.isNavigating = true
             self.followUser = true
             self.centerRequest &+= 1
@@ -349,37 +364,107 @@ final class DriveViewModel: NSObject, ObservableObject {
 
     private func updateNavigation(_ location: CLLocation) {
         guard isNavigating, !routeSteps.isEmpty else { return }
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 70 else { return }
 
-        // Kiểm tra trực tiếp khoảng cách đến destination hiện tại trước.
-        // Cách này ổn định hơn việc chỉ dựa vào endpoint của từng MKRoute.Step.
+        // 1) Đến đích: dùng bán kính linh hoạt theo độ chính xác GPS.
         if stops.indices.contains(currentStopIndex),
            let destinationCoordinate = stops[currentStopIndex].coordinate {
             let destinationLocation = CLLocation(
                 latitude: destinationCoordinate.latitude,
                 longitude: destinationCoordinate.longitude
             )
-            if destinationLocation.distance(from: location) <= 40 {
+            let arrivalRadius = max(12.0, min(28.0, location.horizontalAccuracy * 0.8))
+            if destinationLocation.distance(from: location) <= arrivalRadius {
                 arriveCurrentStage()
                 return
             }
         }
 
-        var bestIndex = currentStepIndex
-        var bestDistance = Double.greatestFiniteMagnitude
-        for i in currentStepIndex..<routeSteps.count {
-            let s = routeSteps[i]
-            let end = CLLocation(latitude: s.endLat, longitude: s.endLng)
-            let d = end.distance(from: location)
-            if d < bestDistance { bestDistance = d; bestIndex = i }
+        // 2) Tự đổi tuyến khi đi lệch đường.
+        let routeDistance = NavigationManager.distanceToPolyline(from: location, coordinates: routeCoordinates)
+        let deviationThreshold = max(28.0, min(55.0, location.horizontalAccuracy * 1.8))
+        if routeDistance > deviationThreshold {
+            offRouteSampleCount += 1
+        } else {
+            offRouteSampleCount = 0
         }
-        if bestDistance < 30, bestIndex < routeSteps.count - 1 { bestIndex += 1 }
-        currentStepIndex = bestIndex
 
-        if bestDistance < 40 && (routeSteps[bestIndex].maneuver == "arrive" || bestIndex == routeSteps.count - 1) {
+        let now = Date().timeIntervalSince1970
+        if offRouteSampleCount >= 2,
+           !isRerouting,
+           now - lastRerouteAt >= rerouteCooldown {
+            rerouteFromCurrentLocation(location)
+            return
+        }
+
+        // 3) Tính tiến độ theo HÌNH HỌC của step, không đo đường chim bay đến endpoint.
+        var remaining = NavigationManager.remainingDistanceAlongPolyline(
+            from: location,
+            coordinates: routeSteps[currentStepIndex].polylineCoordinates
+        )
+
+        // Chỉ chuyển tối đa 1 step mỗi lần GPS update. Điều này tránh nhảy nhầm sang
+        // một đoạn đường tương lai nằm song song / rất gần vị trí hiện tại.
+        if currentStepIndex < routeSteps.count - 1 {
+            let currentDistanceToPath = NavigationManager.distanceToPolyline(
+                from: location,
+                coordinates: routeSteps[currentStepIndex].polylineCoordinates
+            )
+            let nextDistanceToPath = NavigationManager.distanceToPolyline(
+                from: location,
+                coordinates: routeSteps[currentStepIndex + 1].polylineCoordinates
+            )
+            let transitionRadius = max(8.0, min(18.0, location.horizontalAccuracy * 0.55))
+            let clearlyOnNextStep = nextDistanceToPath <= transitionRadius && currentDistanceToPath > transitionRadius
+            let nextStepMuchCloser = remaining < 60 && nextDistanceToPath + 5 < currentDistanceToPath
+
+            if remaining <= transitionRadius || clearlyOnNextStep || nextStepMuchCloser {
+                currentStepIndex += 1
+                remaining = NavigationManager.remainingDistanceAlongPolyline(
+                    from: location,
+                    coordinates: routeSteps[currentStepIndex].polylineCoordinates
+                )
+            }
+        }
+
+        currentManeuverDistance = max(0, remaining)
+
+        if currentStepIndex == routeSteps.count - 1,
+           (routeSteps[currentStepIndex].maneuver == "arrive" || remaining <= 8) {
             arriveCurrentStage()
             return
         }
+
         sendCurrentNavigation(force: false)
+    }
+
+    private func rerouteFromCurrentLocation(_ location: CLLocation) {
+        guard stops.indices.contains(currentStopIndex),
+              let destination = stops[currentStopIndex].coordinate,
+              !isRerouting else { return }
+
+        isRerouting = true
+        lastRerouteAt = Date().timeIntervalSince1970
+        offRouteSampleCount = 0
+        statusText = "Đang tự động đổi tuyến…"
+
+        nav.fetchRoute(from: location.coordinate, to: destination) { [weak self] steps, _, totalDistanceText, coordinates in
+            guard let self else { return }
+            self.isRerouting = false
+            guard !steps.isEmpty, !coordinates.isEmpty else {
+                self.statusText = "Chưa thể đổi tuyến — sẽ thử lại"
+                return
+            }
+
+            self.routeSteps = steps
+            self.routeCoordinates = coordinates
+            self.currentStepIndex = 0
+            self.currentManeuverDistance = steps.first.map { Double($0.distance) } ?? 0
+            self.followUser = true
+            self.centerRequest &+= 1
+            self.statusText = "Đã đổi tuyến · \(totalDistanceText)"
+            self.sendCurrentNavigation(force: true)
+        }
     }
 
     private func arriveCurrentStage() {
@@ -409,7 +494,7 @@ final class DriveViewModel: NSObject, ObservableObject {
             "next": ""
         ])
         showArrival = true
-        statusText = "Đã hoàn thành chặng \(idx + 1)"
+        statusText = qrString.isEmpty ? "Đã hoàn thành chặng \(idx + 1) · Chưa cài QR thanh toán" : "Đã hoàn thành chặng \(idx + 1)"
     }
 
     private func sendCurrentNavigation(force: Bool) {
@@ -419,7 +504,12 @@ final class DriveViewModel: NSObject, ObservableObject {
         lastSentTime = now
 
         let step = routeSteps[currentStepIndex]
-        let distance = CLLocation(latitude: step.endLat, longitude: step.endLng).distance(from: location)
+        let measuredDistance = NavigationManager.remainingDistanceAlongPolyline(
+            from: location,
+            coordinates: step.polylineCoordinates
+        )
+        let distance = measuredDistance.isFinite ? measuredDistance : Double(step.distance)
+        currentManeuverDistance = max(0, distance)
         var remainingSec = 0
         for i in currentStepIndex..<routeSteps.count { remainingSec += routeSteps[i].durationValue }
         let eta = Date().addingTimeInterval(TimeInterval(remainingSec))
@@ -435,6 +525,7 @@ final class DriveViewModel: NSObject, ObservableObject {
             "eta": formatter.string(from: eta),
             "ete": formatDuration(remainingSec),
             "maneuver": displayManeuver,
+            "roundabout_exit": step.roundaboutExit,
             "next": (currentStepIndex + 1..<min(currentStepIndex + 5, routeSteps.count)).map { routeSteps[$0].maneuver }.joined(separator: ",")
         ])
     }
@@ -460,12 +551,15 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     private func sendIdleToHUD() {
-        ble.send(json: ["speed": 0, "distance": 0, "next_road": "", "next_road_sub": "", "eta": "", "ete": "", "total_distance": "", "maneuver": "straight", "next": ""])
+        ble.send(json: ["speed": 0, "distance": 0, "next_road": "", "next_road_sub": "", "eta": "", "ete": "", "total_distance": "", "maneuver": "straight", "roundabout_exit": 0, "next": ""])
     }
 
     private func setupLocation() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = 2
+        locationManager.activityType = .automotiveNavigation
+        locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.requestAlwaysAuthorization()
         locationManager.startUpdatingLocation()
     }
@@ -496,6 +590,8 @@ extension DriveViewModel: CLLocationManagerDelegate {
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+        guard abs(location.timestamp.timeIntervalSinceNow) < 6 else { return }
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 80 else { return }
         currentLocation = location
         if let pending = pendingCoordinate, let stopID = pendingStopID {
             pendingCoordinate = nil

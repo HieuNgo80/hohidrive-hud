@@ -2,92 +2,100 @@ import Foundation
 import CoreLocation
 import MapKit
 
-/// Một bước rẽ trong tuyến đường (từ Apple MapKit / MKDirections)
+/// Một bước rẽ trong tuyến đường (Apple MapKit / MKDirections).
 struct RouteStep {
-    let instruction: String   // chỉ dẫn đầy đủ từ Apple MapKit
-    let roadName: String      // tên đường thật, tách khỏi câu "Rẽ trái vào..."
-    let maneuver: String      // left | right | straight | uturn | arrive
+    let instruction: String
+    let roadName: String
+    /// left | right | slight_left | slight_right | keep_left | keep_right |
+    /// sharp_left | sharp_right | straight | uturn | roundabout | arrive
+    let maneuver: String
+    let roundaboutExit: Int
     let endLat: Double
     let endLng: Double
-    let distance: Int         // mét tới hết bước này
-    let durationValue: Int    // giây đi hết bước này
+    let distance: Int
+    let durationValue: Int
+    /// Hình học chi tiết của riêng step. Dùng để tính khoảng cách theo ĐƯỜNG ĐI,
+    /// thay vì đo đường chim bay tới điểm cuối step.
+    let polylineCoordinates: [CLLocationCoordinate2D]
 }
 
-/// Lấy tuyến đường bằng Apple MapKit (MKDirections) — miễn phí, không cần API key
-class NavigationManager {
+/// Apple MapKit route helper.
+final class NavigationManager {
 
-    /// Tính tuyến đường, trả về steps + thông tin tổng + tọa độ polyline để vẽ
-    func fetchRoute(from: CLLocationCoordinate2D,
-                    to: CLLocationCoordinate2D,
-                    completion: @escaping ([RouteStep], Int, String, [CLLocationCoordinate2D]) -> Void) {
-
+    func fetchRoute(
+        from: CLLocationCoordinate2D,
+        to: CLLocationCoordinate2D,
+        completion: @escaping ([RouteStep], Int, String, [CLLocationCoordinate2D]) -> Void
+    ) {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
         request.transportType = .automobile
         request.requestsAlternateRoutes = false
 
-        let directions = MKDirections(request: request)
-        directions.calculate { response, error in
+        MKDirections(request: request).calculate { response, _ in
             guard let route = response?.routes.first else {
                 DispatchQueue.main.async { completion([], 0, "", []) }
                 return
             }
 
-            // Tổng: thời gian + khoảng cách
             let totalDurationSec = Int(route.expectedTravelTime)
             let totalDistanceText = Self.formatDistance(route.distance)
-            let totalDistance = route.steps.reduce(0.0) { $0 + $1.distance }
+            let totalStepDistance = route.steps.reduce(0.0) { $0 + $1.distance }
 
-            // Từng bước rẽ (MKRouteStep) — MapKit không cho thời gian từng step,
-            // nên chia tổng thời gian theo tỷ lệ quãng đường của từng bước
             var steps: [RouteStep] = []
-            for s in route.steps {
-                // Điểm cuối của bước này = điểm cuối polyline của step
-                guard s.polyline.pointCount > 0 else { continue }
-                let pts = s.polyline.points()
-                let end = pts[s.polyline.pointCount - 1].coordinate
-                let stepDuration = totalDistance > 0
-                    ? Int(Double(s.distance) / totalDistance * Double(totalDurationSec))
+            for step in route.steps {
+                let coords = Self.coordinates(from: step.polyline)
+                guard let end = coords.last else { continue }
+
+                let duration = totalStepDistance > 0
+                    ? Int(step.distance / totalStepDistance * Double(totalDurationSec))
                     : 0
-                let instruction = s.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
-                steps.append(RouteStep(
-                    instruction: instruction,
-                    roadName: Self.extractRoadName(from: instruction),
-                    maneuver: Self.mapManeuver(instruction),
-                    endLat: end.latitude,
-                    endLng: end.longitude,
-                    distance: Int(s.distance),
-                    durationValue: stepDuration
-                ))
+
+                let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                let maneuver = Self.mapManeuver(instruction)
+                steps.append(
+                    RouteStep(
+                        instruction: instruction,
+                        roadName: Self.extractRoadName(from: instruction),
+                        maneuver: maneuver,
+                        roundaboutExit: maneuver == "roundabout" ? Self.extractRoundaboutExit(from: instruction) : 0,
+                        endLat: end.latitude,
+                        endLng: end.longitude,
+                        distance: Int(step.distance.rounded()),
+                        durationValue: duration,
+                        polylineCoordinates: coords
+                    )
+                )
             }
 
-            // Tọa độ polyline tổng (để vẽ tuyến đường)
-            var coords: [CLLocationCoordinate2D] = []
-            let routePts = route.polyline.points()
-            for i in 0..<route.polyline.pointCount {
-                coords.append(routePts[i].coordinate)
-            }
-
+            let routeCoordinates = Self.coordinates(from: route.polyline)
             DispatchQueue.main.async {
-                completion(steps, totalDurationSec, totalDistanceText, coords)
+                completion(steps, totalDurationSec, totalDistanceText, routeCoordinates)
             }
         }
     }
 
-    /// Định dạng khoảng cách mét -> "25.4 km" / "800 m"
+    private static func coordinates(from polyline: MKPolyline) -> [CLLocationCoordinate2D] {
+        guard polyline.pointCount > 0 else { return [] }
+        let points = polyline.points()
+        return (0..<polyline.pointCount).map { points[$0].coordinate }
+    }
+
     static func formatDistance(_ meters: CLLocationDistance) -> String {
         if meters >= 1000 {
             return String(format: "%.1f km", meters / 1000)
         }
-        return "\(Int(meters)) m"
+        return "\(max(0, Int(meters.rounded()))) m"
     }
 
-    /// Chuẩn hóa hướng rẽ từ câu chỉ dẫn của Apple MapKit.
-    /// Quan trọng: kiểm tra quay đầu / đến nơi trước trái-phải.
     static func mapManeuver(_ instruction: String) -> String {
         let lower = instruction.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
 
+        if lower.contains("roundabout") || lower.contains("traffic circle") || lower.contains("rotary")
+            || lower.contains("vong xoay") || lower.contains("bung binh") {
+            return "roundabout"
+        }
         if lower.contains("quay dau") || lower.contains("u-turn") || lower.contains("u turn")
             || lower.contains("make a u-turn") || lower.contains("turn around") {
             return "uturn"
@@ -97,20 +105,51 @@ class NavigationManager {
             || lower.contains("you have arrived") {
             return "arrive"
         }
+        if lower.contains("keep left") || lower.contains("giu ben trai") { return "keep_left" }
+        if lower.contains("keep right") || lower.contains("giu ben phai") { return "keep_right" }
+        if lower.contains("slight left") || lower.contains("chech trai") { return "slight_left" }
+        if lower.contains("slight right") || lower.contains("chech phai") { return "slight_right" }
+        if lower.contains("sharp left") { return "sharp_left" }
+        if lower.contains("sharp right") { return "sharp_right" }
         if lower.contains("re trai") || lower.contains("left") { return "left" }
         if lower.contains("re phai") || lower.contains("right") { return "right" }
         return "straight"
     }
 
-    /// Tách tên đường khỏi câu chỉ dẫn của Apple.
-    /// Ví dụ: "Rẽ trái vào đường Nguyễn Huệ" -> "đường Nguyễn Huệ"
-    /// hoặc "Turn right onto Queen St" -> "Queen St".
+    /// Lấy số lối ra ở vòng xoay nếu Apple cung cấp trong câu chỉ dẫn.
+    static func extractRoundaboutExit(from instruction: String) -> Int {
+        let lower = instruction.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        guard lower.contains("roundabout") || lower.contains("traffic circle") || lower.contains("rotary")
+                || lower.contains("vong xoay") || lower.contains("bung binh") else { return 0 }
+
+        let patterns = [
+            #"(?:exit|loi ra|loi thoat)[^0-9]{0,16}([0-9]{1,2})"#,
+            #"(?:take|lay|chon)[^0-9]{0,16}([0-9]{1,2})(?:st|nd|rd|th)?[^a-z0-9]{0,8}(?:exit|loi ra)"#
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..<lower.endIndex, in: lower)),
+               match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: lower),
+               let value = Int(lower[range]) {
+                return value
+            }
+        }
+
+        let wordOrdinals: [(String, Int)] = [
+            ("first exit", 1), ("second exit", 2), ("third exit", 3), ("fourth exit", 4),
+            ("fifth exit", 5), ("sixth exit", 6), ("seventh exit", 7), ("eighth exit", 8),
+            ("loi ra thu nhat", 1), ("loi ra thu hai", 2), ("loi ra thu ba", 3),
+            ("loi ra thu tu", 4), ("loi ra thu nam", 5), ("loi ra thu sau", 6)
+        ]
+        for item in wordOrdinals where lower.contains(item.0) { return item.1 }
+        return 0
+    }
+
     static func extractRoadName(from instruction: String) -> String {
         let text = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "" }
 
-        // Dùng range trực tiếp trên chuỗi gốc. Không dùng chuỗi đã bỏ dấu để
-        // tính offset vì Unicode tiếng Việt có thể làm lệch vị trí ký tự.
         let separators = [
             " vào ", " tại ", " trên ", " theo ", " qua ", " đến ",
             " onto ", " on ", " via ", " toward ", " towards ", " along "
@@ -118,16 +157,12 @@ class NavigationManager {
 
         for separator in separators {
             if let range = text.range(of: separator, options: [.caseInsensitive, .diacriticInsensitive]) {
-                var road = String(text[range.upperBound...])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                var road = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 road = road.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
-                if !road.isEmpty {
-                    return road
-                }
+                if !road.isEmpty { return road }
             }
         }
 
-        // Một số câu của Apple chỉ đặt tên đường ngay sau động từ.
         let prefixes = [
             "turn left ", "turn right ", "turn around ",
             "rẽ trái ", "rẽ phải ", "quay đầu ",
@@ -143,32 +178,116 @@ class NavigationManager {
         }
 
         let lower = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-        if lower.contains("head ") || lower.contains("di ve huong") || lower.contains("di ve") {
-            return ""
-        }
-
-        // Nếu Apple đã trả thẳng tên đường, giữ nguyên.
+        if lower.contains("head ") || lower.contains("di ve huong") || lower.contains("di ve") { return "" }
         return text
     }
 
-    /// Tính các điểm tuyến đường phía trước dạng tọa độ TƯƠNG ĐỐI so với xe
-    /// để firmware vẽ mini map heading-up: dx > 0 = bên phải, dy > 0 = phía trước (đơn vị mét)
-    /// - Returns: [[dx,dy], ...] tối đa 20 điểm, mỗi điểm cách nhau ~12m
+    // MARK: - Route progress geometry
+
+    /// Khoảng cách vuông góc từ GPS hiện tại đến polyline gần nhất.
+    static func distanceToPolyline(from location: CLLocation, coordinates: [CLLocationCoordinate2D]) -> Double {
+        guard coordinates.count >= 2 else { return .greatestFiniteMagnitude }
+        var best = Double.greatestFiniteMagnitude
+        for i in 0..<(coordinates.count - 1) {
+            let segment = projectedSegment(location: location, a: coordinates[i], b: coordinates[i + 1])
+            best = min(best, segment.distance)
+        }
+        return best
+    }
+
+    /// Khoảng cách còn lại dọc THEO polyline tới cuối step, không phải đường chim bay.
+    static func remainingDistanceAlongPolyline(from location: CLLocation, coordinates: [CLLocationCoordinate2D]) -> Double {
+        guard coordinates.count >= 2 else {
+            guard let last = coordinates.last else { return .greatestFiniteMagnitude }
+            return location.distance(from: CLLocation(latitude: last.latitude, longitude: last.longitude))
+        }
+
+        var bestDistance = Double.greatestFiniteMagnitude
+        var bestIndex = 0
+        var bestT = 0.0
+
+        for i in 0..<(coordinates.count - 1) {
+            let segment = projectedSegment(location: location, a: coordinates[i], b: coordinates[i + 1])
+            if segment.distance < bestDistance {
+                bestDistance = segment.distance
+                bestIndex = i
+                bestT = segment.t
+            }
+        }
+
+        let a = CLLocation(latitude: coordinates[bestIndex].latitude, longitude: coordinates[bestIndex].longitude)
+        let b = CLLocation(latitude: coordinates[bestIndex + 1].latitude, longitude: coordinates[bestIndex + 1].longitude)
+        var remaining = a.distance(from: b) * (1.0 - bestT)
+
+        if bestIndex + 1 < coordinates.count - 1 {
+            for i in (bestIndex + 1)..<(coordinates.count - 1) {
+                let p0 = CLLocation(latitude: coordinates[i].latitude, longitude: coordinates[i].longitude)
+                let p1 = CLLocation(latitude: coordinates[i + 1].latitude, longitude: coordinates[i + 1].longitude)
+                remaining += p0.distance(from: p1)
+            }
+        }
+        return max(0, remaining)
+    }
+
+    /// Chọn step gần xe nhất trong cửa sổ nhỏ quanh step hiện tại.
+    /// Không quét toàn tuyến để tránh nhảy nhầm sang đoạn đường song song phía xa trong hành trình.
+    static func nearestStepIndex(from location: CLLocation, steps: [RouteStep], currentIndex: Int) -> Int {
+        guard !steps.isEmpty else { return 0 }
+        let start = max(0, currentIndex - 1)
+        let end = min(steps.count - 1, currentIndex + 3)
+        var bestIndex = min(max(currentIndex, 0), steps.count - 1)
+        var bestDistance = Double.greatestFiniteMagnitude
+
+        for i in start...end {
+            let d = distanceToPolyline(from: location, coordinates: steps[i].polylineCoordinates)
+            if d < bestDistance {
+                bestDistance = d
+                bestIndex = i
+            }
+        }
+        return max(currentIndex, bestIndex)
+    }
+
+    private static func projectedSegment(
+        location: CLLocation,
+        a: CLLocationCoordinate2D,
+        b: CLLocationCoordinate2D
+    ) -> (distance: Double, t: Double) {
+        let lat0 = location.coordinate.latitude * .pi / 180
+        let metersLat = 111_320.0
+        let metersLng = 111_320.0 * cos(lat0)
+
+        let ax = (a.longitude - location.coordinate.longitude) * metersLng
+        let ay = (a.latitude - location.coordinate.latitude) * metersLat
+        let bx = (b.longitude - location.coordinate.longitude) * metersLng
+        let by = (b.latitude - location.coordinate.latitude) * metersLat
+
+        let vx = bx - ax
+        let vy = by - ay
+        let lengthSquared = vx * vx + vy * vy
+        if lengthSquared <= 0.0001 { return (hypot(ax, ay), 0) }
+
+        let rawT = -(ax * vx + ay * vy) / lengthSquared
+        let t = min(1.0, max(0.0, rawT))
+        let px = ax + t * vx
+        let py = ay + t * vy
+        return (hypot(px, py), t)
+    }
+
+    // MARK: - Legacy mini-map helpers retained for compatibility
+
     static func relativeRoutePoints(from location: CLLocation,
                                     routeCoords: [CLLocationCoordinate2D]) -> [[Int]] {
         guard routeCoords.count > 1 else { return [] }
 
         let lat0 = location.coordinate.latitude
         let lng0 = location.coordinate.longitude
-
-        // Heading: ưu tiên course của GPS; nếu không có thì đoán từ 2 điểm polyline gần nhất
         var heading = location.course
         if heading < 0 {
             var nearest = 0
             var best = Double.greatestFiniteMagnitude
             for (i, p) in routeCoords.enumerated() {
-                let d = CLLocation(latitude: p.latitude, longitude: p.longitude)
-                    .distance(from: location)
+                let d = CLLocation(latitude: p.latitude, longitude: p.longitude).distance(from: location)
                 if d < best { best = d; nearest = i }
             }
             let a = routeCoords[nearest]
@@ -179,28 +298,25 @@ class NavigationManager {
         }
         if heading < 0 { heading += 360 }
         let h = heading * .pi / 180
-        let cosH = cos(h)
-        let sinH = sin(h)
+        let cosH = cos(h), sinH = sin(h)
 
-        // Tìm điểm polyline gần xe nhất -> bắt đầu lấy từ đó
         var startIdx = 0
         var bestDist = Double.greatestFiniteMagnitude
         for (i, p) in routeCoords.enumerated() {
-            let d = CLLocation(latitude: p.latitude, longitude: p.longitude)
-                .distance(from: location)
+            let d = CLLocation(latitude: p.latitude, longitude: p.longitude).distance(from: location)
             if d < bestDist { bestDist = d; startIdx = i }
         }
 
         var result: [[Int]] = []
         var last = routeCoords[startIdx]
         var accumulated: Double = 0
-        let spacing: Double = 12 // mét giữa các điểm gửi đi
+        let spacing: Double = 12
 
         func appendPoint(_ p: CLLocationCoordinate2D) {
             let dLat = (p.latitude - lat0) * 111320
             let dLng = (p.longitude - lng0) * 111320 * cos(lat0 * .pi / 180)
-            let forward = dLat * cosH + dLng * sinH   // dy: phía trước
-            let right = -dLat * sinH + dLng * cosH    // dx: bên phải
+            let forward = dLat * cosH + dLng * sinH
+            let right = -dLat * sinH + dLng * cosH
             result.append([Int(right.rounded()), Int(forward.rounded())])
         }
 
@@ -219,41 +335,27 @@ class NavigationManager {
         return result
     }
 
-    /// Cách 2 (v14): app tự vẽ bitmap mini map 1-bit 128x64 từ các điểm tuyến đường
-    /// (heading-up: xe giữa màn, dy>0 vẽ LÊN TRÊN) rồi pack thành 1-bit giống SSD1306
-    /// - Returns: 1024 bytes, mỗi byte 8 pixel ngang (bit 7 = pixel trái nhất)
-    static func makeMapBitmap(routePoints: [[Int]],
-                              width: Int = 128,
-                              height: Int = 64) -> [UInt8] {
+    static func makeMapBitmap(routePoints: [[Int]], width: Int = 128, height: Int = 64) -> [UInt8] {
         var pixels = [UInt8](repeating: 0, count: width * height)
         let carX = width / 2
         let carY = height / 2 + 6
 
-        // Scale giống firmware: vừa theo chiều cao phía trước + chiều ngang
         var maxDy = 10, maxDx = 10
         for p in routePoints where p.count >= 2 {
             maxDy = max(maxDy, p[1])
             maxDx = max(maxDx, abs(p[0]))
         }
-        let scale = min(Float(carY - 4) / Float(maxDy),
-                        Float(width / 2 - 6) / Float(maxDx + 4))
+        let scale = min(Float(carY - 4) / Float(maxDy), Float(width / 2 - 6) / Float(maxDx + 4))
         let s = scale > 2.0 ? 2.0 : (scale < 0.05 ? 0.05 : scale)
 
-        // Chuyển các điểm sang tọa độ pixel
         var pts: [(Int, Int)] = []
         for p in routePoints where p.count >= 2 {
-            let x = carX + Int(Float(p[0]) * s)
-            let y = carY - Int(Float(p[1]) * s)
-            pts.append((x, y))
+            pts.append((carX + Int(Float(p[0]) * s), carY - Int(Float(p[1]) * s)))
         }
 
         func setPixel(_ x: Int, _ y: Int) {
-            if x >= 0 && x < width && y >= 0 && y < height {
-                pixels[y * width + x] = 1
-            }
+            if x >= 0 && x < width && y >= 0 && y < height { pixels[y * width + x] = 1 }
         }
-
-        // Bresenham line
         func drawLine(_ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int) {
             var x0 = x0, y0 = y0
             let dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1
@@ -268,21 +370,13 @@ class NavigationManager {
             }
         }
 
-        // Vẽ polyline tuyến đường
         if pts.count >= 2 {
-            for i in 1..<pts.count {
-                drawLine(pts[i - 1].0, pts[i - 1].1, pts[i].0, pts[i].1)
-            }
+            for i in 1..<pts.count { drawLine(pts[i - 1].0, pts[i - 1].1, pts[i].0, pts[i].1) }
         }
-
-        // Vẽ xe: chấm tròn giữa màn
         for dy in -2...2 {
-            for dx in -2...2 where dx * dx + dy * dy <= 4 {
-                setPixel(carX + dx, carY + dy)
-            }
+            for dx in -2...2 where dx * dx + dy * dy <= 4 { setPixel(carX + dx, carY + dy) }
         }
 
-        // Pack thành 1-bit (giống Adafruit SSD1306 drawBitmap)
         var bytes = [UInt8](repeating: 0, count: width * height / 8)
         for y in 0..<height {
             for x in 0..<width where pixels[y * width + x] == 1 {
