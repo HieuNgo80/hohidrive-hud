@@ -133,6 +133,39 @@ struct OrdersView: View {
                 }
             }
 
+            HStack(spacing: 10) {
+                Button {
+                    model.saveQR(qrDraft)
+                    model.testQRonHUD()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "display")
+                        Text("Test QR on HUD")
+                    }
+                    .font(.hohi(12.5, weight: .bold))
+                    .foregroundStyle(HOHITheme.purple)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 43)
+                    .background(HOHITheme.purple.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(qrDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.hudConnected)
+                .opacity(qrDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.hudConnected ? 0.45 : 1)
+
+                Button {
+                    model.stopQRTest()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.hohi(13, weight: .bold))
+                        .foregroundStyle(HOHITheme.muted)
+                        .frame(width: 44, height: 43)
+                        .background(HOHITheme.background.opacity(0.8))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "display")
                     .font(.hohi(12, weight: .bold))

@@ -93,6 +93,7 @@ final class DriveViewModel: NSObject, ObservableObject {
     private var offRouteSampleCount = 0
     private var lastRerouteAt: TimeInterval = 0
     private let rerouteCooldown: TimeInterval = 7
+    private var hudHeartbeatTimer: Timer?
 
     var nextIncompleteIndex: Int? {
         stops.firstIndex { !$0.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.completed }
@@ -189,6 +190,7 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     func startNewTrip() {
+        stopHUDHeartbeat()
         isNavigating = false
         isCalculating = false
         routeSteps = []
@@ -210,6 +212,7 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     func stopNavigation() {
+        stopHUDHeartbeat()
         isNavigating = false
         isCalculating = false
         routeSteps = []
@@ -355,6 +358,7 @@ final class DriveViewModel: NSObject, ObservableObject {
             self.isRerouting = false
             self.offRouteSampleCount = 0
             self.isNavigating = true
+            self.startHUDHeartbeat()
             self.followUser = true
             self.centerRequest &+= 1
             self.statusText = "Đang dẫn đường · Chặng \(resolvedIndex + 1)/\(self.stops.count) · \(totalDistanceText)"
@@ -469,6 +473,7 @@ final class DriveViewModel: NSObject, ObservableObject {
 
     private func arriveCurrentStage() {
         guard !showArrival else { return }
+        stopHUDHeartbeat()
         isNavigating = false
         let idx = currentStopIndex
         guard stops.indices.contains(idx) else { return }
@@ -491,7 +496,8 @@ final class DriveViewModel: NSObject, ObservableObject {
             "ete": "",
             "maneuver": "arrive",
             "qr": qrString,
-            "next": ""
+            "next": "",
+            "nav_active": 0
         ])
         showArrival = true
         statusText = qrString.isEmpty ? "Đã hoàn thành chặng \(idx + 1) · Chưa cài QR thanh toán" : "Đã hoàn thành chặng \(idx + 1)"
@@ -526,7 +532,8 @@ final class DriveViewModel: NSObject, ObservableObject {
             "ete": formatDuration(remainingSec),
             "maneuver": displayManeuver,
             "roundabout_exit": step.roundaboutExit,
-            "next": (currentStepIndex + 1..<min(currentStepIndex + 5, routeSteps.count)).map { routeSteps[$0].maneuver }.joined(separator: ",")
+            "next": (currentStepIndex + 1..<min(currentStepIndex + 5, routeSteps.count)).map { routeSteps[$0].maneuver }.joined(separator: ","),
+            "nav_active": 1
         ])
     }
 
@@ -551,7 +558,50 @@ final class DriveViewModel: NSObject, ObservableObject {
     }
 
     private func sendIdleToHUD() {
-        ble.send(json: ["speed": 0, "distance": 0, "next_road": "", "next_road_sub": "", "eta": "", "ete": "", "total_distance": "", "maneuver": "straight", "roundabout_exit": 0, "next": ""])
+        ble.send(json: ["speed": 0, "distance": 0, "next_road": "", "next_road_sub": "", "eta": "", "ete": "", "total_distance": "", "maneuver": "straight", "roundabout_exit": 0, "next": "", "nav_active": 0])
+    }
+
+    private func startHUDHeartbeat() {
+        stopHUDHeartbeat()
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self, self.isNavigating, self.hudConnected else { return }
+            self.sendCurrentNavigation(force: true)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hudHeartbeatTimer = timer
+    }
+
+    private func stopHUDHeartbeat() {
+        hudHeartbeatTimer?.invalidate()
+        hudHeartbeatTimer = nil
+    }
+
+    func testQRonHUD() {
+        guard hudConnected else {
+            statusText = "HUD chưa kết nối"
+            return
+        }
+        guard !qrString.isEmpty else {
+            statusText = "Chưa nhập dữ liệu QR thanh toán"
+            return
+        }
+        ble.send(json: [
+            "speed": 0,
+            "distance": 0,
+            "next_road": "QR TEST",
+            "eta": "",
+            "ete": "",
+            "maneuver": "arrive",
+            "qr": qrString,
+            "next": "",
+            "nav_active": 0
+        ])
+        statusText = "Đã gửi QR test lên HUD"
+    }
+
+    func stopQRTest() {
+        sendIdleToHUD()
+        statusText = "Đã tắt QR test"
     }
 
     private func setupLocation() {
@@ -560,6 +610,8 @@ final class DriveViewModel: NSObject, ObservableObject {
         locationManager.distanceFilter = 2
         locationManager.activityType = .automotiveNavigation
         locationManager.pausesLocationUpdatesAutomatically = false
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.showsBackgroundLocationIndicator = true
         locationManager.requestAlwaysAuthorization()
         locationManager.startUpdatingLocation()
     }
